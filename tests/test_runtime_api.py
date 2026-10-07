@@ -1,0 +1,87 @@
+from fastapi.testclient import TestClient
+
+from apps.runtime_api.main import create_app
+from services.runtime_execution.service import RuntimeExecutionService
+
+
+def build_client() -> TestClient:
+    return TestClient(create_app(runtime=RuntimeExecutionService()))
+
+
+def test_runtime_health_endpoint() -> None:
+    client = build_client()
+
+    response = client.get("/health")
+
+    assert response.status_code == 200
+    assert response.json() == {"status": "ok", "service": "runtime-api"}
+
+
+def test_start_get_and_list_agent_run() -> None:
+    client = build_client()
+    headers = {"X-Tenant-ID": "tenant-a"}
+
+    start_response = client.post(
+        "/agent-runs",
+        headers=headers,
+        json={
+            "user_id": "user-1",
+            "agent_id": "agent.customer-support",
+            "agent_version": "1.0.0",
+            "input": {"message": "hello"},
+        },
+    )
+
+    assert start_response.status_code == 201
+    run = start_response.json()["run"]
+    assert run["status"] == "completed"
+    assert run["tenant_id"] == "tenant-a"
+    assert run["output"]["policy"]["decision"] == "permit"
+    assert run["output"]["model"]["output_text"] == "MVP model gateway response"
+
+    get_response = client.get(f"/agent-runs/{run['run_id']}", headers=headers)
+    list_response = client.get("/agent-runs", headers=headers)
+
+    assert get_response.status_code == 200
+    assert get_response.json()["run"]["run_id"] == run["run_id"]
+    assert len(list_response.json()["runs"]) == 1
+
+
+def test_start_agent_run_returns_forbidden_when_policy_denies() -> None:
+    client = build_client()
+
+    response = client.post(
+        "/agent-runs",
+        headers={"X-Tenant-ID": "tenant-a"},
+        json={
+            "user_id": "user-1",
+            "agent_id": "agent.customer-support",
+            "agent_version": "1.0.0",
+            "input": {"policy_decision": "deny"},
+        },
+    )
+
+    assert response.status_code == 403
+    detail = response.json()["detail"]
+    assert detail["code"] == "policy_denied"
+    assert detail["run_id"]
+    assert detail["policy_decision_id"]
+
+
+def test_agent_run_is_tenant_scoped() -> None:
+    client = build_client()
+    start_response = client.post(
+        "/agent-runs",
+        headers={"X-Tenant-ID": "tenant-a"},
+        json={
+            "user_id": "user-1",
+            "agent_id": "agent.customer-support",
+            "agent_version": "1.0.0",
+            "input": {"message": "hello"},
+        },
+    )
+    run_id = start_response.json()["run"]["run_id"]
+
+    response = client.get(f"/agent-runs/{run_id}", headers={"X-Tenant-ID": "tenant-b"})
+
+    assert response.status_code == 404

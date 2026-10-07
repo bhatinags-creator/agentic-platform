@@ -1,0 +1,21 @@
+services:
+  postgres:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: agentic
+      POSTGRES_PASSWORD: agentic
+      POSTGRES_DB: agentic
+    ports: ["5432:5432"]
+  redis:
+    image: redis:7
+    ports: ["6379:6379"]
+  control-plane-api:
+    build: .
+    command: uvicorn apps.control_plane_api.main:app --host 0.0.0.0 --port 8001
+    ports: ["8001:8001"]
+    env_file: .env.example
+  runtime-api:
+    build: .
+    command: uvicorn apps.runtime_api.main:app --host 0.0.0.0 --port 8002
+    ports: ["8002:8002"]
+    env_file: .env.example

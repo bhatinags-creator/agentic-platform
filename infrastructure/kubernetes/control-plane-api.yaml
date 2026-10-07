@@ -1,0 +1,18 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: control-plane-api
+spec:
+  replicas: 1
+  selector:
+    matchLabels: { app: control-plane-api }
+  template:
+    metadata:
+      labels: { app: control-plane-api }
+    spec:
+      containers:
+        - name: control-plane-api
+          image: agentic-platform:local
+          command: ["uvicorn", "apps.control_plane_api.main:app", "--host", "0.0.0.0", "--port", "8001"]
+          ports:
+            - containerPort: 8001
