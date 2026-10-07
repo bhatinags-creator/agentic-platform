@@ -987,3 +987,52 @@ Methods:
 - `_save(...)`: stores a signal.
 - `_severity_from_score(...)`: maps scores to severity.
 - `_parse_uuid(...)`: normalizes UUID input.
+
+## Tool Gateway Governance
+
+File:
+
+- `services/tool_gateway/service.py`
+
+Key classes:
+
+- `ToolRiskClass`: tool risk enum.
+- `ToolStatus`: active, deprecated, disabled lifecycle enum.
+- `ToolInvocationStatus`: succeeded, denied, failed enum.
+- `ToolDefinition`: governed tool registry record.
+- `ToolInvocationDecision`: permit/deny decision for a tool call.
+- `ToolInvocationRecord`: evidence for a tool invocation.
+- `ToolRegistryService`: registers, loads, lists, and deprecates tools.
+- `ToolGatewayService`: evaluates and records tool invocations before returning mock tool output.
+
+## MCP Adapter Foundation
+
+File:
+
+- `protocols/mcp/service.py`
+
+Key classes:
+
+- `MCPServerDefinition`: tenant-scoped MCP server registration.
+- `MCPToolReference`: discovered MCP tool reference.
+- `MCPResourceReference`: discovered MCP resource reference.
+- `MCPAdapter`: adapter protocol.
+- `StaticMCPAdapter`: test adapter.
+- `MCPAdapterRegistry`: registers MCP servers and lists tools/resources through the adapter.
+
+## RAG Platform
+
+File:
+
+- `services/rag_platform/service.py`
+
+Key classes:
+
+- `KnowledgeBase`: tenant knowledge source registry record.
+- `KnowledgeDocument`: stored source document.
+- `DocumentChunk`: chunk generated from a document.
+- `IngestionJob`: ingestion evidence record.
+- `Citation`: source citation for retrieval.
+- `RetrievalResult`: retrieved text with score, citation, and safety metadata.
+- `RetrievalGovernanceReport`: aggregate retrieval safety report.
+- `RAGPlatformService`: registers knowledge bases, ingests documents, searches chunks, governs retrievals, and supports runtime retrieval fallback.

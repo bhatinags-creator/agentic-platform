@@ -5,6 +5,7 @@ from uuid import UUID, uuid4
 
 from platform_common.domain.models import AgentRun, AgentRunStatus, PolicyDecision
 from platform_common.events.envelope import ActorType, EventEnvelope
+from services.aisecops.service import AISecOpsMonitoringService, AISecOpsSignal
 from services.audit_service.service import AuditService
 from services.finops_service.service import AIFinOpsService, BudgetExceededError, CostEvent
 from services.memory_governance.service import MemoryGovernanceService, MemoryRecord, MemoryType
@@ -12,7 +13,7 @@ from services.model_gateway.service import ModelGatewayService
 from services.policy_engine.service import PolicyEngineService
 from services.rag_platform.service import RAGPlatformService
 from services.responsible_ai.service import ResponsibleAIService
-from services.tool_gateway.service import ToolGatewayService
+from services.tool_gateway.service import ToolGatewayService, ToolInvocationDeniedError
 
 
 class AgentRunNotFoundError(Exception):
@@ -90,6 +91,7 @@ class RuntimeExecutionService:
         finops_service: AIFinOpsService | None = None,
         memory_governance: MemoryGovernanceService | None = None,
         responsible_ai_service: ResponsibleAIService | None = None,
+        aisecops_service: AISecOpsMonitoringService | None = None,
     ) -> None:
         self.repository = repository or InMemoryAgentRunRepository()
         self.model_gateway = model_gateway or ModelGatewayService()
@@ -100,6 +102,7 @@ class RuntimeExecutionService:
         self.finops_service = finops_service or AIFinOpsService()
         self.memory_governance = memory_governance or MemoryGovernanceService()
         self.responsible_ai_service = responsible_ai_service or ResponsibleAIService()
+        self.aisecops_service = aisecops_service or AISecOpsMonitoringService()
 
     async def start_run(
         self,
@@ -163,11 +166,48 @@ class RuntimeExecutionService:
             raise RuntimePolicyDeniedError("Policy denied agent run", denied_run, policy_decision)
 
         try:
+            aisecops_signals: list[AISecOpsSignal] = []
+            prompt_signal = self.aisecops_service.inspect_prompt(
+                str(input_payload),
+                tenant_id=tenant_id,
+                agent_id=agent_id,
+                run_id=str(running_run.run_id),
+                trace_id=trace_id,
+            )
+            if prompt_signal["signal"] != "none":
+                self._write_audit_event(
+                    "agent_run.aisecops_signal_recorded",
+                    running_run,
+                    {
+                        "signal_id": prompt_signal["signal_id"],
+                        "signal": prompt_signal["signal"],
+                        "severity": prompt_signal["severity"],
+                    },
+                )
+
             retrievals = await self.rag_platform.retrieve(str(input_payload), {"tenant_id": tenant_id})
+            for retrieval in retrievals:
+                safety_findings = retrieval.get("safety_findings") or []
+                if safety_findings:
+                    aisecops_signals.append(
+                        self.aisecops_service.record_rag_poisoning(
+                            tenant_id=tenant_id,
+                            agent_id=agent_id,
+                            knowledge_source=str(retrieval.get("citation", "unknown")),
+                            evidence={"findings": safety_findings},
+                            run_id=str(running_run.run_id),
+                            trace_id=trace_id,
+                        )
+                    )
             tool_result = await self.tool_gateway.invoke(
                 "mvp.echo",
                 input_payload,
-                {"tenant_id": tenant_id, "trace_id": trace_id},
+                {
+                    "tenant_id": tenant_id,
+                    "trace_id": trace_id,
+                    "run_id": str(running_run.run_id),
+                    "agent_id": agent_id,
+                },
             )
             model_result = await self.model_gateway.chat(
                 {"provider": "mock", "model": "mock-model"},
@@ -224,6 +264,14 @@ class RuntimeExecutionService:
                 },
             )
             self._write_audit_event(
+                "agent_run.aisecops_checked",
+                running_run,
+                {
+                    "signals": [str(signal.signal_id) for signal in aisecops_signals],
+                    "signal_count": len(aisecops_signals) + (1 if prompt_signal["signal"] != "none" else 0),
+                },
+            )
+            self._write_audit_event(
                 "agent_run.memory_recorded",
                 running_run,
                 {
@@ -252,6 +300,18 @@ class RuntimeExecutionService:
                             "status": responsible_ai_assessment.status,
                             "findings": responsible_ai_assessment.findings,
                         },
+                        "aisecops": {
+                            "prompt_signal": prompt_signal,
+                            "signals": [
+                                {
+                                    "signal_id": str(signal.signal_id),
+                                    "signal_type": signal.signal_type,
+                                    "severity": signal.severity,
+                                    "status": signal.status,
+                                }
+                                for signal in aisecops_signals
+                            ],
+                        },
                         "model": {
                             "output_text": model_result.output_text,
                             "provider": model_result.provider,
@@ -268,6 +328,17 @@ class RuntimeExecutionService:
             saved_run = self.repository.save_run(completed_run)
             self._write_audit_event("agent_run.completed", saved_run, {})
             return saved_run
+        except ToolInvocationDeniedError as exc:
+            self.aisecops_service.record_tool_abuse(
+                tenant_id=tenant_id,
+                agent_id=agent_id,
+                tool_name=exc.record.tool_name,
+                evidence={"reason": exc.record.decision.reason},
+                run_id=str(running_run.run_id),
+                trace_id=trace_id,
+            )
+            failed_run = self._record_failed_run(running_run, "tool_invocation_denied", str(exc))
+            raise RuntimeExecutionFailedError(str(exc), failed_run, "tool_invocation_denied") from exc
         except BudgetExceededError as exc:
             failed_run = self._record_failed_run(running_run, "budget_exceeded", str(exc))
             raise RuntimeExecutionFailedError(str(exc), failed_run, "budget_exceeded") from exc

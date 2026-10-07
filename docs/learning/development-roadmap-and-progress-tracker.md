@@ -4,12 +4,12 @@ Last updated: 2026-10-06
 
 ## Current Status
 
-We have completed Steps 01 to 23.
+We have completed Steps 01 to 30.
 
 Current platform stage:
 
 ```text
-Foundation + Control Plane MVP + Runtime Plane MVP + Governance Hooks + Persistent Runtime Stores + Agent Studio Foundations + Evaluation + Responsible AI + AISecOps Monitoring Models
+Foundation + Control Plane MVP + Runtime Plane MVP + Governance Hooks + Persistent Runtime Stores + Agent Studio Foundations + Evaluation + Responsible AI + AISecOps + Tool Governance + MCP + RAG Platform
 ```
 
 The platform can currently:
@@ -34,6 +34,10 @@ The platform can currently:
 - capture Responsible AI fairness, bias, explainability, model risk, and regulatory evidence
 - attach Responsible AI runtime assessments to completed agent runs
 - record AISecOps security monitoring signals for prompt attacks, agent behavior, RAG poisoning, model drift, tool abuse, and anomalies
+- run AISecOps checks inside runtime execution
+- register and govern tool invocation
+- register MCP servers and list MCP tools/resources
+- register knowledge bases, ingest documents, create chunks, attach citations, and govern retrieval safety
 
 Current verification baseline:
 
@@ -389,34 +393,41 @@ Key files:
 
 ### Step 24 - Runtime AISecOps Hooks
 
-Status: Next
+Status: Done
 
 Purpose: Detect suspicious runtime behavior.
 
-Planned deliverables:
+Implemented:
 
-- prompt injection detection stub
-- tool abuse signal
-- anomaly event
-- audit integration
+- runtime prompt attack inspection
+- AISecOps audit events
+- RAG poisoning signal hook
+- tool abuse signal hook
+- runtime `aisecops` output section
+
+Key files:
+
+- `services/runtime_execution/service.py`
+- `tests/test_runtime_execution.py`
+- `docs/learning/steps-24-30-security-tools-mcp-rag.md`
 
 ## Phase 10 - Tool Gateway and MCP
 
 ### Step 25 - Tool Registry
 
-Status: Planned
+Status: Done
 
 Purpose: Register and govern tools available to agents.
 
 ### Step 26 - Tool Invocation Governance
 
-Status: Planned
+Status: Done
 
 Purpose: Control which tools agents can call.
 
 ### Step 27 - MCP Adapter Foundation
 
-Status: Planned
+Status: Done
 
 Purpose: Support Model Context Protocol style tool/resource adapters.
 
@@ -424,19 +435,19 @@ Purpose: Support Model Context Protocol style tool/resource adapters.
 
 ### Step 28 - Knowledge Base Registry
 
-Status: Planned
+Status: Done
 
 Purpose: Register governed knowledge sources.
 
 ### Step 29 - Ingestion Pipeline MVP
 
-Status: Planned
+Status: Done
 
 Purpose: Load and chunk documents for retrieval.
 
 ### Step 30 - Retrieval Governance
 
-Status: Planned
+Status: Done
 
 Purpose: Track citations, source permissions, and RAG safety.
 
@@ -444,7 +455,7 @@ Purpose: Track citations, source permissions, and RAG safety.
 
 ### Step 31 - Deployment Service MVP
 
-Status: Planned
+Status: Next
 
 Purpose: Deploy published agent versions into runtime environments.
 
@@ -564,16 +575,16 @@ Purpose: Harden platform security posture.
 
 Recommended immediate sequence from our current point:
 
-1. Step 24 - Runtime AISecOps Hooks
-2. Step 25 - Tool Registry
-3. Step 26 - Tool Invocation Governance
-4. Step 27 - MCP Adapter Foundation
-5. Step 28 - Knowledge Base Registry
-6. Step 29 - Ingestion Pipeline MVP
-7. Step 30 - Retrieval Governance
-8. Step 31 - Deployment Service MVP
-9. Step 32 - Deployment Gates
-10. Step 33 - Local Laptop Deployment Scripts
+1. Step 31 - Deployment Service MVP
+2. Step 32 - Deployment Gates
+3. Step 33 - Local Laptop Deployment Scripts
+4. Step 34 - Human Task Service MVP
+5. Step 35 - Runtime Human Approval Checkpoints
+6. Step 36 - Trace and Span Model
+7. Step 37 - Metrics API
+8. Step 38 - Python SDK Expansion
+9. Step 39 - CLI Tool
+10. Step 40 - Minimal Local Agent Studio UI
 
 ## Progress Summary
 
@@ -602,10 +613,17 @@ Completed:
 - Step 21 - Responsible AI Service
 - Step 22 - Responsible AI Runtime Hooks
 - Step 23 - AISecOps Monitoring Models
+- Step 24 - Runtime AISecOps Hooks
+- Step 25 - Tool Registry
+- Step 26 - Tool Invocation Governance
+- Step 27 - MCP Adapter Foundation
+- Step 28 - Knowledge Base Registry
+- Step 29 - Ingestion Pipeline MVP
+- Step 30 - Retrieval Governance
 
 Next:
 
-- Step 24 - Runtime AISecOps Hooks
+- Step 31 - Deployment Service MVP
 
 Total roadmap steps listed:
 
@@ -616,15 +634,16 @@ Total roadmap steps listed:
 Completed:
 
 ```text
-23 / 48
+30 / 48
 ```
 
 Approximate completion:
 
 ```text
-47.9%
+62.5%
 ```
 
 Note: the percentage is based on planned development steps, not calendar effort. Some later steps are larger than early ones.
+
 
 

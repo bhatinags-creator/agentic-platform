@@ -55,6 +55,7 @@ async def test_sqlite_audit_repository_persists_events_across_service_instances(
         "agent_run.policy_evaluated",
         "agent_run.cost_recorded",
         "agent_run.responsible_ai_checked",
+        "agent_run.aisecops_checked",
         "agent_run.memory_recorded",
         "agent_run.completed",
     ]
