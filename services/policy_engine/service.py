@@ -4,6 +4,9 @@ from platform_common.domain.models import PolicyDecision
 
 
 class PolicyEngineService:
+    def __init__(self, allow_client_decision_override: bool = False) -> None:
+        self.allow_client_decision_override = allow_client_decision_override
+
     async def evaluate(
         self,
         action: str,
@@ -11,7 +14,10 @@ class PolicyEngineService:
         resource: dict[str, Any],
     ) -> PolicyDecision:
         input_payload = resource.get("input", {})
-        if input_payload.get("policy_decision") == "deny":
+        if (
+            self.allow_client_decision_override
+            and input_payload.get("policy_decision") == "deny"
+        ):
             return PolicyDecision(
                 decision="deny",
                 reason=f"MVP policy denied action: {action}",

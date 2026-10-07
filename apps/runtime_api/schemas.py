@@ -1,11 +1,13 @@
 from typing import Any
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 from platform_common.domain.models import AgentRun
 
 
 class StartRunRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     user_id: str = Field(min_length=1)
     agent_id: str = Field(min_length=1)
     agent_version: str = Field(min_length=1)

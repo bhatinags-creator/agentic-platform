@@ -6,7 +6,7 @@ from uuid import UUID, uuid4
 from platform_common.domain.models import AgentRun, AgentRunStatus, PolicyDecision
 from platform_common.events.envelope import ActorType, EventEnvelope
 from services.audit_service.service import AuditService
-from services.finops_service.service import AIFinOpsService, CostEvent
+from services.finops_service.service import AIFinOpsService, BudgetExceededError, CostEvent
 from services.memory_governance.service import MemoryGovernanceService, MemoryRecord, MemoryType
 from services.model_gateway.service import ModelGatewayService
 from services.policy_engine.service import PolicyEngineService
@@ -26,6 +26,15 @@ class RuntimePolicyDeniedError(Exception):
         super().__init__(message)
         self.run = run
         self.decision = decision
+
+
+class RuntimeExecutionFailedError(Exception):
+    """Raised when execution fails after the run has been created and persisted."""
+
+    def __init__(self, message: str, run: AgentRun, error_code: str) -> None:
+        super().__init__(message)
+        self.run = run
+        self.error_code = error_code
 
 
 class AgentRunRepository(ABC):
@@ -153,111 +162,118 @@ class RuntimeExecutionService:
             )
             raise RuntimePolicyDeniedError("Policy denied agent run", denied_run, policy_decision)
 
-        retrievals = await self.rag_platform.retrieve(str(input_payload), {"tenant_id": tenant_id})
-        tool_result = await self.tool_gateway.invoke(
-            "mvp.echo",
-            input_payload,
-            {"tenant_id": tenant_id, "trace_id": trace_id},
-        )
-        model_result = await self.model_gateway.chat(
-            {"provider": "mock", "model": "mock-model"},
-            [{"role": "user", "content": str(input_payload)}],
-        )
-        cost_event = self.finops_service.record_model_usage(
-            tenant_id=tenant_id,
-            agent_id=agent_id,
-            run_id=str(running_run.run_id),
-            trace_id=trace_id,
-            provider=model_result.provider,
-            model=model_result.model,
-            prompt_tokens=model_result.prompt_tokens,
-            completion_tokens=model_result.completion_tokens,
-            estimated_cost=model_result.estimated_cost,
-            workflow_id=input_payload.get("workflow_id"),
-            department=input_payload.get("department"),
-        )
-        self._write_audit_event(
-            "agent_run.cost_recorded",
-            running_run,
-            {
-                "cost_event_id": str(cost_event.event_id),
-                "total_tokens": cost_event.total_tokens,
-                "estimated_cost": cost_event.estimated_cost,
-            },
-        )
-        memory_record = self.memory_governance.create_record(
-            tenant_id=tenant_id,
-            agent_id=agent_id,
-            run_id=str(running_run.run_id),
-            trace_id=trace_id,
-            memory_type=MemoryType.CONVERSATION,
-            content={
-                "input": input_payload,
-                "model_output": model_result.output_text,
-                "retrieval_count": len(retrievals),
-                "tool_status": tool_result.get("status"),
-            },
-        )
-        responsible_ai_assessment = self.responsible_ai_service.assess_runtime_output(
-            tenant_id=tenant_id,
-            agent_id=agent_id,
-            run_id=str(running_run.run_id),
-            output_text=model_result.output_text,
-        )
-        self._write_audit_event(
-            "agent_run.responsible_ai_checked",
-            running_run,
-            {
-                "assessment_id": str(responsible_ai_assessment.assessment_id),
-                "status": responsible_ai_assessment.status,
-                "findings": responsible_ai_assessment.findings,
-            },
-        )
-        self._write_audit_event(
-            "agent_run.memory_recorded",
-            running_run,
-            {
-                "memory_id": str(memory_record.memory_id),
-                "memory_type": memory_record.memory_type,
-                "retention": memory_record.retention,
-                "expires_at": memory_record.expires_at.isoformat()
-                if memory_record.expires_at
-                else None,
-            },
-        )
-
-        completed_run = running_run.model_copy(
-            update={
-                "status": AgentRunStatus.COMPLETED,
-                "output": {
-                    "policy": {
-                        "decision_id": str(policy_decision.decision_id),
-                        "decision": policy_decision.decision,
-                        "reason": policy_decision.reason,
-                    },
-                    "finops": self._cost_event_output(cost_event),
-                    "memory": self._memory_record_output(memory_record),
-                    "responsible_ai": {
-                        "assessment_id": str(responsible_ai_assessment.assessment_id),
-                        "status": responsible_ai_assessment.status,
-                        "findings": responsible_ai_assessment.findings,
-                    },
-                    "model": {
-                        "output_text": model_result.output_text,
-                        "provider": model_result.provider,
-                        "model": model_result.model,
-                        "prompt_tokens": model_result.prompt_tokens,
-                        "completion_tokens": model_result.completion_tokens,
-                        "estimated_cost": model_result.estimated_cost,
-                    },
-                    "tool": tool_result,
-                    "retrievals": retrievals,
+        try:
+            retrievals = await self.rag_platform.retrieve(str(input_payload), {"tenant_id": tenant_id})
+            tool_result = await self.tool_gateway.invoke(
+                "mvp.echo",
+                input_payload,
+                {"tenant_id": tenant_id, "trace_id": trace_id},
+            )
+            model_result = await self.model_gateway.chat(
+                {"provider": "mock", "model": "mock-model"},
+                [{"role": "user", "content": str(input_payload)}],
+            )
+            cost_event = self.finops_service.record_model_usage(
+                tenant_id=tenant_id,
+                agent_id=agent_id,
+                run_id=str(running_run.run_id),
+                trace_id=trace_id,
+                provider=model_result.provider,
+                model=model_result.model,
+                prompt_tokens=model_result.prompt_tokens,
+                completion_tokens=model_result.completion_tokens,
+                estimated_cost=model_result.estimated_cost,
+                workflow_id=input_payload.get("workflow_id"),
+                department=input_payload.get("department"),
+            )
+            self._write_audit_event(
+                "agent_run.cost_recorded",
+                running_run,
+                {
+                    "cost_event_id": str(cost_event.event_id),
+                    "total_tokens": cost_event.total_tokens,
+                    "estimated_cost": cost_event.estimated_cost,
                 },
-            }
-        )
-        saved_run = self.repository.save_run(completed_run)
-        self._write_audit_event("agent_run.completed", saved_run, {})
-        return saved_run
+            )
+            memory_record = self.memory_governance.create_record(
+                tenant_id=tenant_id,
+                agent_id=agent_id,
+                run_id=str(running_run.run_id),
+                trace_id=trace_id,
+                memory_type=MemoryType.CONVERSATION,
+                content={
+                    "input": input_payload,
+                    "model_output": model_result.output_text,
+                    "retrieval_count": len(retrievals),
+                    "tool_status": tool_result.get("status"),
+                },
+            )
+            responsible_ai_assessment = self.responsible_ai_service.assess_runtime_output(
+                tenant_id=tenant_id,
+                agent_id=agent_id,
+                run_id=str(running_run.run_id),
+                output_text=model_result.output_text,
+            )
+            self._write_audit_event(
+                "agent_run.responsible_ai_checked",
+                running_run,
+                {
+                    "assessment_id": str(responsible_ai_assessment.assessment_id),
+                    "status": responsible_ai_assessment.status,
+                    "findings": responsible_ai_assessment.findings,
+                },
+            )
+            self._write_audit_event(
+                "agent_run.memory_recorded",
+                running_run,
+                {
+                    "memory_id": str(memory_record.memory_id),
+                    "memory_type": memory_record.memory_type,
+                    "retention": memory_record.retention,
+                    "expires_at": memory_record.expires_at.isoformat()
+                    if memory_record.expires_at
+                    else None,
+                },
+            )
+
+            completed_run = running_run.model_copy(
+                update={
+                    "status": AgentRunStatus.COMPLETED,
+                    "output": {
+                        "policy": {
+                            "decision_id": str(policy_decision.decision_id),
+                            "decision": policy_decision.decision,
+                            "reason": policy_decision.reason,
+                        },
+                        "finops": self._cost_event_output(cost_event),
+                        "memory": self._memory_record_output(memory_record),
+                        "responsible_ai": {
+                            "assessment_id": str(responsible_ai_assessment.assessment_id),
+                            "status": responsible_ai_assessment.status,
+                            "findings": responsible_ai_assessment.findings,
+                        },
+                        "model": {
+                            "output_text": model_result.output_text,
+                            "provider": model_result.provider,
+                            "model": model_result.model,
+                            "prompt_tokens": model_result.prompt_tokens,
+                            "completion_tokens": model_result.completion_tokens,
+                            "estimated_cost": model_result.estimated_cost,
+                        },
+                        "tool": tool_result,
+                        "retrievals": retrievals,
+                    },
+                }
+            )
+            saved_run = self.repository.save_run(completed_run)
+            self._write_audit_event("agent_run.completed", saved_run, {})
+            return saved_run
+        except BudgetExceededError as exc:
+            failed_run = self._record_failed_run(running_run, "budget_exceeded", str(exc))
+            raise RuntimeExecutionFailedError(str(exc), failed_run, "budget_exceeded") from exc
+        except Exception as exc:
+            failed_run = self._record_failed_run(running_run, "execution_failed", str(exc))
+            raise RuntimeExecutionFailedError(str(exc), failed_run, "execution_failed") from exc
 
     def get_run(self, tenant_id: str, run_id: UUID | str) -> AgentRun:
         run_uuid = self._parse_uuid(run_id)
@@ -269,14 +285,12 @@ class RuntimeExecutionService:
     def list_runs(self, tenant_id: str) -> list[AgentRun]:
         return self.repository.list_runs(tenant_id)
 
-    def list_audit_events(
-        self, tenant_id: str | None = None, trace_id: str | None = None
-    ) -> list[EventEnvelope]:
+    def list_audit_events(self, tenant_id: str, trace_id: str | None = None) -> list[EventEnvelope]:
         return self.audit_service.list_events(tenant_id=tenant_id, trace_id=trace_id)
 
     def list_memory_records(
         self,
-        tenant_id: str | None = None,
+        tenant_id: str,
         agent_id: str | None = None,
         run_id: str | None = None,
     ) -> list[MemoryRecord]:
@@ -285,6 +299,26 @@ class RuntimeExecutionService:
             agent_id=agent_id,
             run_id=run_id,
         )
+
+    def _record_failed_run(
+        self,
+        running_run: AgentRun,
+        error_code: str,
+        message: str,
+    ) -> AgentRun:
+        failed_run = running_run.model_copy(
+            update={
+                "status": AgentRunStatus.FAILED,
+                "output": {"error": error_code, "message": message},
+            }
+        )
+        self.repository.save_run(failed_run)
+        self._write_audit_event(
+            "agent_run.failed",
+            failed_run,
+            {"error": error_code, "message": message},
+        )
+        return failed_run
 
     def _write_audit_event(
         self,

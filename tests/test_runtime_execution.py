@@ -2,7 +2,12 @@ import pytest
 
 from platform_common.domain.models import AgentRunStatus
 from services.finops_service.service import AIFinOpsService
-from services.runtime_execution.service import RuntimeExecutionService, RuntimePolicyDeniedError
+from services.policy_engine.service import PolicyEngineService
+from services.runtime_execution.service import (
+    RuntimeExecutionFailedError,
+    RuntimeExecutionService,
+    RuntimePolicyDeniedError,
+)
 
 
 @pytest.mark.anyio
@@ -96,7 +101,9 @@ async def test_runtime_execution_writes_audit_events_for_completed_run() -> None
 
 @pytest.mark.anyio
 async def test_runtime_execution_denies_run_when_policy_denies() -> None:
-    service = RuntimeExecutionService()
+    service = RuntimeExecutionService(
+        policy_engine=PolicyEngineService(allow_client_decision_override=True)
+    )
 
     with pytest.raises(RuntimePolicyDeniedError) as exc_info:
         await service.start_run(
@@ -117,6 +124,36 @@ async def test_runtime_execution_denies_run_when_policy_denies() -> None:
         "agent_run.started",
         "agent_run.policy_evaluated",
         "agent_run.denied",
+    ]
+
+
+
+@pytest.mark.anyio
+async def test_runtime_execution_saves_failed_run_when_budget_is_exceeded() -> None:
+    finops_service = AIFinOpsService()
+    finops_service.set_tenant_budget("tenant-a", 0)
+    service = RuntimeExecutionService(finops_service=finops_service)
+
+    with pytest.raises(RuntimeExecutionFailedError) as exc_info:
+        await service.start_run(
+            tenant_id="tenant-a",
+            user_id="user-1",
+            agent_id="agent.customer-support",
+            agent_version="1.0.0",
+            input_payload={"message": "hello"},
+        )
+
+    failed_run = exc_info.value.run
+    assert failed_run.status == AgentRunStatus.FAILED
+    assert failed_run.output is not None
+    assert failed_run.output["error"] == "budget_exceeded"
+    assert service.get_run("tenant-a", failed_run.run_id).status == AgentRunStatus.FAILED
+
+    events = service.list_audit_events(tenant_id="tenant-a", trace_id=failed_run.trace_id)
+    assert [event.event_type for event in events] == [
+        "agent_run.started",
+        "agent_run.policy_evaluated",
+        "agent_run.failed",
     ]
 
 

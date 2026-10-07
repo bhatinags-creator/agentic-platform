@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import sqlite3
+from contextlib import closing
 from pathlib import Path
 from uuid import UUID
 
@@ -17,7 +18,7 @@ class SQLiteAgentRegistryRepository(AgentRegistryRepository):
         self._initialize_schema()
 
     def save_agent(self, agent: AgentDefinition) -> AgentDefinition:
-        with self._connect() as connection:
+        with closing(self._connect()) as connection, connection:
             connection.execute(
                 """
                 INSERT INTO agents (
@@ -46,7 +47,7 @@ class SQLiteAgentRegistryRepository(AgentRegistryRepository):
         return agent
 
     def get_agent(self, tenant_id: str, agent_id: UUID) -> AgentDefinition | None:
-        with self._connect() as connection:
+        with closing(self._connect()) as connection, connection:
             row = connection.execute(
                 """
                 SELECT payload_json
@@ -58,7 +59,7 @@ class SQLiteAgentRegistryRepository(AgentRegistryRepository):
         return self._agent_from_row(row)
 
     def find_agent_by_name(self, tenant_id: str, name: str) -> AgentDefinition | None:
-        with self._connect() as connection:
+        with closing(self._connect()) as connection, connection:
             row = connection.execute(
                 """
                 SELECT payload_json
@@ -70,7 +71,7 @@ class SQLiteAgentRegistryRepository(AgentRegistryRepository):
         return self._agent_from_row(row)
 
     def list_agents(self, tenant_id: str) -> list[AgentDefinition]:
-        with self._connect() as connection:
+        with closing(self._connect()) as connection, connection:
             rows = connection.execute(
                 """
                 SELECT payload_json
@@ -83,7 +84,7 @@ class SQLiteAgentRegistryRepository(AgentRegistryRepository):
         return [AgentDefinition.model_validate_json(row["payload_json"]) for row in rows]
 
     def save_version(self, version: AgentVersion) -> AgentVersion:
-        with self._connect() as connection:
+        with closing(self._connect()) as connection, connection:
             agent = connection.execute(
                 """
                 SELECT tenant_id
@@ -133,7 +134,7 @@ class SQLiteAgentRegistryRepository(AgentRegistryRepository):
         return version
 
     def get_version(self, tenant_id: str, version_id: UUID) -> AgentVersion | None:
-        with self._connect() as connection:
+        with closing(self._connect()) as connection, connection:
             row = connection.execute(
                 """
                 SELECT payload_json
@@ -147,7 +148,7 @@ class SQLiteAgentRegistryRepository(AgentRegistryRepository):
     def find_version_by_manifest_version(
         self, tenant_id: str, agent_id: UUID, manifest_version: str
     ) -> AgentVersion | None:
-        with self._connect() as connection:
+        with closing(self._connect()) as connection, connection:
             row = connection.execute(
                 """
                 SELECT payload_json
@@ -159,7 +160,7 @@ class SQLiteAgentRegistryRepository(AgentRegistryRepository):
         return self._version_from_row(row)
 
     def list_versions(self, tenant_id: str, agent_id: UUID) -> list[AgentVersion]:
-        with self._connect() as connection:
+        with closing(self._connect()) as connection, connection:
             rows = connection.execute(
                 """
                 SELECT payload_json
@@ -172,7 +173,7 @@ class SQLiteAgentRegistryRepository(AgentRegistryRepository):
         return [AgentVersion.model_validate_json(row["payload_json"]) for row in rows]
 
     def _initialize_schema(self) -> None:
-        with self._connect() as connection:
+        with closing(self._connect()) as connection, connection:
             connection.executescript(
                 """
                 CREATE TABLE IF NOT EXISTS agents (
@@ -227,3 +228,4 @@ class SQLiteAgentRegistryRepository(AgentRegistryRepository):
         if row is None:
             return None
         return AgentVersion.model_validate_json(row["payload_json"])
+

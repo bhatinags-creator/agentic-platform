@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import sqlite3
+from contextlib import closing
 from pathlib import Path
 from uuid import UUID
 
@@ -17,7 +18,7 @@ class SQLiteAgentRunRepository(AgentRunRepository):
         self._initialize_schema()
 
     def save_run(self, run: AgentRun) -> AgentRun:
-        with self._connect() as connection:
+        with closing(self._connect()) as connection, connection:
             connection.execute(
                 """
                 INSERT INTO agent_runs (
@@ -49,7 +50,7 @@ class SQLiteAgentRunRepository(AgentRunRepository):
         return run
 
     def get_run(self, tenant_id: str, run_id: UUID) -> AgentRun | None:
-        with self._connect() as connection:
+        with closing(self._connect()) as connection, connection:
             row = connection.execute(
                 """
                 SELECT payload_json
@@ -63,7 +64,7 @@ class SQLiteAgentRunRepository(AgentRunRepository):
         return AgentRun.model_validate_json(row["payload_json"])
 
     def list_runs(self, tenant_id: str) -> list[AgentRun]:
-        with self._connect() as connection:
+        with closing(self._connect()) as connection, connection:
             rows = connection.execute(
                 """
                 SELECT payload_json
@@ -76,7 +77,7 @@ class SQLiteAgentRunRepository(AgentRunRepository):
         return [AgentRun.model_validate_json(row["payload_json"]) for row in rows]
 
     def _initialize_schema(self) -> None:
-        with self._connect() as connection:
+        with closing(self._connect()) as connection, connection:
             connection.executescript(
                 """
                 CREATE TABLE IF NOT EXISTS agent_runs (
@@ -103,3 +104,4 @@ class SQLiteAgentRunRepository(AgentRunRepository):
         connection = sqlite3.connect(self.database_path)
         connection.row_factory = sqlite3.Row
         return connection
+

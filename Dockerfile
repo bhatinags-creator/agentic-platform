@@ -1,5 +1,12 @@
 FROM python:3.12-slim
+
 WORKDIR /app
+
 COPY . .
-RUN pip install --no-cache-dir -e .
+RUN pip install --no-cache-dir -e . \
+    && adduser --disabled-password --gecos "" appuser \
+    && chown -R appuser:appuser /app
+
+USER appuser
+
 CMD ["uvicorn", "apps.control_plane_api.main:app", "--host", "0.0.0.0", "--port", "8001"]

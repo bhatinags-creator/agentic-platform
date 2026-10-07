@@ -13,6 +13,7 @@ from services.finops_service.service import AIFinOpsService, SQLiteFinOpsReposit
 from services.memory_governance.service import MemoryGovernanceService, SQLiteMemoryRepository
 from services.runtime_execution.service import (
     AgentRunNotFoundError,
+    RuntimeExecutionFailedError,
     RuntimeExecutionService,
     RuntimePolicyDeniedError,
 )
@@ -67,6 +68,20 @@ def create_app(runtime: RuntimeExecutionService | None = None) -> FastAPI:
                     "run_id": str(exc.run.run_id),
                     "policy_decision_id": str(exc.decision.decision_id),
                     "reason": exc.decision.reason,
+                },
+            ) from exc
+        except RuntimeExecutionFailedError as exc:
+            status_code = (
+                status.HTTP_429_TOO_MANY_REQUESTS
+                if exc.error_code == "budget_exceeded"
+                else status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+            raise HTTPException(
+                status_code=status_code,
+                detail={
+                    "code": exc.error_code,
+                    "message": str(exc),
+                    "run_id": str(exc.run.run_id),
                 },
             ) from exc
         return AgentRunResponse(run=run)

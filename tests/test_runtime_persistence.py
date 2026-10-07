@@ -1,5 +1,8 @@
+import sqlite3
+
 import pytest
 
+from platform_common.events.envelope import ActorType, EventEnvelope
 from services.audit_service.service import AuditService, SQLiteAuditRepository
 from services.finops_service.service import AIFinOpsService, SQLiteFinOpsRepository
 from services.memory_governance.service import (
@@ -104,3 +107,23 @@ def test_sqlite_memory_repository_persists_and_purges_records(tmp_path) -> None:
 
 
 
+
+
+
+def test_sqlite_audit_repository_is_append_only(tmp_path) -> None:
+    repository = SQLiteAuditRepository(tmp_path / "runtime.db")
+    event = EventEnvelope.create(
+        event_type="agent_run.started",
+        tenant_id="tenant-a",
+        trace_id="trace-1",
+        correlation_id="run-1",
+        actor_type=ActorType.USER,
+        actor_id="user-1",
+        subject_type="agent_run",
+        subject_id="run-1",
+    )
+
+    repository.save_event(event)
+
+    with pytest.raises(sqlite3.IntegrityError):
+        repository.save_event(event)

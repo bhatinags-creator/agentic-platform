@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import sqlite3
+from contextlib import closing
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
@@ -85,7 +86,7 @@ class SQLiteFinOpsRepository(FinOpsRepository):
         self._initialize_schema()
 
     def save_event(self, event: CostEvent) -> CostEvent:
-        with self._connect() as connection:
+        with closing(self._connect()) as connection, connection:
             connection.execute(
                 """
                 INSERT INTO cost_events (
@@ -134,12 +135,12 @@ class SQLiteFinOpsRepository(FinOpsRepository):
             query += " AND department = ?"
             params.append(department)
         query += " ORDER BY occurred_at ASC"
-        with self._connect() as connection:
+        with closing(self._connect()) as connection, connection:
             rows = connection.execute(query, params).fetchall()
         return [self._event_from_row(row) for row in rows]
 
     def _initialize_schema(self) -> None:
-        with self._connect() as connection:
+        with closing(self._connect()) as connection, connection:
             connection.executescript(
                 """
                 CREATE TABLE IF NOT EXISTS cost_events (
@@ -218,7 +219,7 @@ class AIFinOpsService:
 
     @property
     def events(self) -> list[CostEvent]:
-        return self.list_events()
+        return self.repository.list_events()
 
     def set_tenant_budget(self, tenant_id: str, budget: float) -> None:
         if budget < 0:
@@ -267,7 +268,7 @@ class AIFinOpsService:
 
     def list_events(
         self,
-        tenant_id: str | None = None,
+        tenant_id: str,
         agent_id: str | None = None,
         run_id: str | None = None,
         department: str | None = None,
@@ -304,3 +305,4 @@ class AIFinOpsService:
             event.estimated_cost
             for event in self.list_events(tenant_id=tenant_id, department=department)
         )
+

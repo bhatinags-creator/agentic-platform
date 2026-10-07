@@ -1,11 +1,13 @@
 from fastapi.testclient import TestClient
 
 from apps.runtime_api.main import create_app
+from services.finops_service.service import AIFinOpsService
+from services.policy_engine.service import PolicyEngineService
 from services.runtime_execution.service import RuntimeExecutionService
 
 
-def build_client() -> TestClient:
-    return TestClient(create_app(runtime=RuntimeExecutionService()))
+def build_client(runtime: RuntimeExecutionService | None = None) -> TestClient:
+    return TestClient(create_app(runtime=runtime or RuntimeExecutionService()))
 
 
 def test_runtime_health_endpoint() -> None:
@@ -48,7 +50,11 @@ def test_start_get_and_list_agent_run() -> None:
 
 
 def test_start_agent_run_returns_forbidden_when_policy_denies() -> None:
-    client = build_client()
+    client = build_client(
+        RuntimeExecutionService(
+            policy_engine=PolicyEngineService(allow_client_decision_override=True)
+        )
+    )
 
     response = client.post(
         "/agent-runs",
@@ -85,3 +91,44 @@ def test_agent_run_is_tenant_scoped() -> None:
     response = client.get(f"/agent-runs/{run_id}", headers={"X-Tenant-ID": "tenant-b"})
 
     assert response.status_code == 404
+
+
+
+def test_start_agent_run_returns_too_many_requests_when_budget_is_exceeded() -> None:
+    finops_service = AIFinOpsService()
+    finops_service.set_tenant_budget("tenant-a", 0)
+    client = build_client(RuntimeExecutionService(finops_service=finops_service))
+
+    response = client.post(
+        "/agent-runs",
+        headers={"X-Tenant-ID": "tenant-a"},
+        json={
+            "user_id": "user-1",
+            "agent_id": "agent.customer-support",
+            "agent_version": "1.0.0",
+            "input": {"message": "hello"},
+        },
+    )
+
+    assert response.status_code == 429
+    detail = response.json()["detail"]
+    assert detail["code"] == "budget_exceeded"
+    assert detail["run_id"]
+
+
+def test_start_agent_run_rejects_unknown_request_fields() -> None:
+    client = build_client()
+
+    response = client.post(
+        "/agent-runs",
+        headers={"X-Tenant-ID": "tenant-a"},
+        json={
+            "user_id": "user-1",
+            "agent_id": "agent.customer-support",
+            "agent_version": "1.0.0",
+            "input": {"message": "hello"},
+            "typo": "should fail",
+        },
+    )
+
+    assert response.status_code == 422

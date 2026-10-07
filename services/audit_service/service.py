@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import sqlite3
+from contextlib import closing
 from pathlib import Path
 
 from platform_common.events.envelope import EventEnvelope
@@ -42,21 +43,13 @@ class SQLiteAuditRepository(AuditRepository):
         self._initialize_schema()
 
     def save_event(self, event: EventEnvelope) -> EventEnvelope:
-        with self._connect() as connection:
+        with closing(self._connect()) as connection, connection:
             connection.execute(
                 """
                 INSERT INTO audit_events (
                     event_id, tenant_id, trace_id, correlation_id, event_type,
                     occurred_at, idempotency_key, payload_json
                 ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-                ON CONFLICT(event_id) DO UPDATE SET
-                    tenant_id = excluded.tenant_id,
-                    trace_id = excluded.trace_id,
-                    correlation_id = excluded.correlation_id,
-                    event_type = excluded.event_type,
-                    occurred_at = excluded.occurred_at,
-                    idempotency_key = excluded.idempotency_key,
-                    payload_json = excluded.payload_json
                 """,
                 (
                     str(event.event_id),
@@ -83,12 +76,12 @@ class SQLiteAuditRepository(AuditRepository):
             query += " AND trace_id = ?"
             params.append(trace_id)
         query += " ORDER BY occurred_at ASC"
-        with self._connect() as connection:
+        with closing(self._connect()) as connection, connection:
             rows = connection.execute(query, params).fetchall()
         return [EventEnvelope.model_validate_json(row["payload_json"]) for row in rows]
 
     def _initialize_schema(self) -> None:
-        with self._connect() as connection:
+        with closing(self._connect()) as connection, connection:
             connection.executescript(
                 """
                 CREATE TABLE IF NOT EXISTS audit_events (
@@ -122,12 +115,11 @@ class AuditService:
 
     @property
     def records(self) -> list[EventEnvelope]:
-        return self.list_events()
+        return self.repository.list_events()
 
     def write(self, event: EventEnvelope) -> EventEnvelope:
         return self.repository.save_event(event)
 
-    def list_events(
-        self, tenant_id: str | None = None, trace_id: str | None = None
-    ) -> list[EventEnvelope]:
+    def list_events(self, tenant_id: str, trace_id: str | None = None) -> list[EventEnvelope]:
         return self.repository.list_events(tenant_id=tenant_id, trace_id=trace_id)
+

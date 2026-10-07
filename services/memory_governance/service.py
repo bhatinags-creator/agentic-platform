@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import sqlite3
+from contextlib import closing
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from enum import StrEnum
@@ -95,7 +96,7 @@ class SQLiteMemoryRepository(MemoryRepository):
         self._initialize_schema()
 
     def save_record(self, record: MemoryRecord) -> MemoryRecord:
-        with self._connect() as connection:
+        with closing(self._connect()) as connection, connection:
             connection.execute(
                 """
                 INSERT INTO memory_records (
@@ -140,7 +141,7 @@ class SQLiteMemoryRepository(MemoryRepository):
             query += " AND memory_type = ?"
             params.append(memory_type.value)
         query += " ORDER BY created_at ASC"
-        with self._connect() as connection:
+        with closing(self._connect()) as connection, connection:
             rows = connection.execute(query, params).fetchall()
         return [self._record_from_row(row) for row in rows]
 
@@ -148,14 +149,14 @@ class SQLiteMemoryRepository(MemoryRepository):
         if not memory_ids:
             return
         placeholders = ", ".join("?" for _ in memory_ids)
-        with self._connect() as connection:
+        with closing(self._connect()) as connection, connection:
             connection.execute(
                 f"DELETE FROM memory_records WHERE memory_id IN ({placeholders})",
                 [str(memory_id) for memory_id in memory_ids],
             )
 
     def _initialize_schema(self) -> None:
-        with self._connect() as connection:
+        with closing(self._connect()) as connection, connection:
             connection.executescript(
                 """
                 CREATE TABLE IF NOT EXISTS memory_records (
@@ -224,7 +225,7 @@ class MemoryGovernanceService:
 
     @property
     def records(self) -> list[MemoryRecord]:
-        return self.list_records()
+        return self.repository.list_records()
 
     def retention_for(self, memory_type: str | MemoryType) -> str:
         resolved_memory_type = self._parse_memory_type(memory_type)
@@ -267,7 +268,7 @@ class MemoryGovernanceService:
 
     def list_records(
         self,
-        tenant_id: str | None = None,
+        tenant_id: str,
         agent_id: str | None = None,
         run_id: str | None = None,
         memory_type: str | MemoryType | None = None,
@@ -284,7 +285,7 @@ class MemoryGovernanceService:
         current_time = now or datetime.now(UTC)
         expired_records = [
             record
-            for record in self.list_records()
+            for record in self.repository.list_records()
             if record.expires_at is not None and record.expires_at <= current_time
         ]
         self.repository.delete_records([record.memory_id for record in expired_records])
@@ -309,3 +310,4 @@ class MemoryGovernanceService:
                 return created_at + timedelta(days=365 * 7)
             case RetentionPolicy.POLICY_CONTROLLED:
                 return None
+
