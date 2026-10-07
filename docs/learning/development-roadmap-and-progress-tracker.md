@@ -4,12 +4,12 @@ Last updated: 2026-10-06
 
 ## Current Status
 
-We have completed Steps 01 to 22.
+We have completed Steps 01 to 23.
 
 Current platform stage:
 
 ```text
-Foundation + Control Plane MVP + Runtime Plane MVP + Governance Hooks + Persistent Runtime Stores + Agent Studio Foundations + Evaluation + Responsible AI
+Foundation + Control Plane MVP + Runtime Plane MVP + Governance Hooks + Persistent Runtime Stores + Agent Studio Foundations + Evaluation + Responsible AI + AISecOps Monitoring Models
 ```
 
 The platform can currently:
@@ -33,6 +33,7 @@ The platform can currently:
 - run offline, online, LLM-as-judge, and safety evaluation flows
 - capture Responsible AI fairness, bias, explainability, model risk, and regulatory evidence
 - attach Responsible AI runtime assessments to completed agent runs
+- record AISecOps security monitoring signals for prompt attacks, agent behavior, RAG poisoning, model drift, tool abuse, and anomalies
 
 Current verification baseline:
 
@@ -364,22 +365,31 @@ Key files:
 
 ### Step 23 - AISecOps Monitoring Models
 
-Status: Next
+Status: Done
 
 Purpose: Define security monitoring records for AI-specific threats.
 
-Planned monitoring areas:
+Implemented:
 
-- prompt attack monitoring
-- agent behavior monitoring
-- RAG poisoning monitoring
-- model drift detection
-- tool abuse detection
-- anomaly detection
+- prompt attack monitoring records
+- agent behavior monitoring records
+- RAG poisoning monitoring records
+- model drift monitoring records
+- tool abuse monitoring records
+- anomaly detection records
+- tenant-scoped signal filtering
+- signal status lifecycle
+- tenant AISecOps summary
+
+Key files:
+
+- `services/aisecops/service.py`
+- `tests/test_aisecops_service.py`
+- `docs/learning/step-23-aisecops-monitoring-models.md`
 
 ### Step 24 - Runtime AISecOps Hooks
 
-Status: Planned
+Status: Next
 
 Purpose: Detect suspicious runtime behavior.
 
@@ -554,16 +564,16 @@ Purpose: Harden platform security posture.
 
 Recommended immediate sequence from our current point:
 
-1. Step 23 - AISecOps Monitoring Models
-2. Step 24 - Runtime AISecOps Hooks
-3. Step 25 - Tool Registry
-4. Step 26 - Tool Invocation Governance
-5. Step 27 - MCP Adapter Foundation
-6. Step 28 - Knowledge Base Registry
-7. Step 29 - Ingestion Pipeline MVP
-8. Step 30 - Retrieval Governance
-9. Step 31 - Deployment Service MVP
-10. Step 32 - Deployment Gates
+1. Step 24 - Runtime AISecOps Hooks
+2. Step 25 - Tool Registry
+3. Step 26 - Tool Invocation Governance
+4. Step 27 - MCP Adapter Foundation
+5. Step 28 - Knowledge Base Registry
+6. Step 29 - Ingestion Pipeline MVP
+7. Step 30 - Retrieval Governance
+8. Step 31 - Deployment Service MVP
+9. Step 32 - Deployment Gates
+10. Step 33 - Local Laptop Deployment Scripts
 
 ## Progress Summary
 
@@ -591,10 +601,11 @@ Completed:
 - Step 20 - Safety Evaluation
 - Step 21 - Responsible AI Service
 - Step 22 - Responsible AI Runtime Hooks
+- Step 23 - AISecOps Monitoring Models
 
 Next:
 
-- Step 23 - AISecOps Monitoring Models
+- Step 24 - Runtime AISecOps Hooks
 
 Total roadmap steps listed:
 
@@ -605,13 +616,15 @@ Total roadmap steps listed:
 Completed:
 
 ```text
-22 / 48
+23 / 48
 ```
 
 Approximate completion:
 
 ```text
-45.8%
+47.9%
 ```
 
 Note: the percentage is based on planned development steps, not calendar effort. Some later steps are larger than early ones.
+
+

@@ -929,3 +929,61 @@ It adds this output section:
 It also writes this audit event:
 
 - `agent_run.responsible_ai_checked`
+
+## AISecOps
+
+File:
+
+- `services/aisecops/service.py`
+
+### `AISecOpsSignalType`
+
+Enum for AI security monitoring categories: prompt attack, agent behavior, RAG poisoning, model drift, tool abuse, and anomaly.
+
+### `AISecOpsSeverity`
+
+Enum for severity levels: none, low, medium, high, and critical.
+
+### `AISecOpsStatus`
+
+Enum for investigation lifecycle: open, investigating, mitigated, and false positive.
+
+### `AISecOpsSignal`
+
+Base security signal record with tenant, agent, signal type, severity, evidence, run, trace, status, and timestamp fields.
+
+### Specialized AISecOps Records
+
+- `PromptAttackMonitoringRecord`: records prompt attack terms.
+- `AgentBehaviorMonitoringRecord`: records suspicious agent behavior.
+- `RAGPoisoningMonitoringRecord`: records suspicious knowledge source signals.
+- `ModelDriftMonitoringRecord`: records drift score and baseline evidence.
+- `ToolAbuseMonitoringRecord`: records suspicious tool usage.
+- `AnomalyDetectionRecord`: records general anomaly score and evidence.
+
+### `AISecOpsSummary`
+
+Tenant-level aggregate counts for total, open, critical, high, and by-type signals.
+
+### `AISecOpsSignalNotFoundError`
+
+Raised when a signal is missing or belongs to another tenant.
+
+### `AISecOpsMonitoringService`
+
+Methods:
+
+- `__init__()`: creates the in-memory signal store.
+- `inspect_prompt(...)`: scans prompt text and records prompt attack signals.
+- `record_prompt_attack(...)`: creates prompt attack records.
+- `record_agent_behavior(...)`: creates suspicious behavior records.
+- `record_rag_poisoning(...)`: creates RAG poisoning records.
+- `record_model_drift(...)`: creates model drift records.
+- `record_tool_abuse(...)`: creates tool abuse records.
+- `record_anomaly(...)`: creates anomaly records.
+- `list_signals(...)`: returns tenant-scoped signals with optional filters.
+- `update_signal_status(...)`: changes signal investigation status.
+- `summarize_tenant(...)`: returns tenant AISecOps summary metrics.
+- `_save(...)`: stores a signal.
+- `_severity_from_score(...)`: maps scores to severity.
+- `_parse_uuid(...)`: normalizes UUID input.
