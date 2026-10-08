@@ -126,7 +126,11 @@ def test_local_agent_studio_page_loads() -> None:
 
     assert response.status_code == 200
     assert "Agent Studio" in response.text
-    assert "Step 41-48 Production Surfaces" in response.text
+    assert "Enterprise Agentic Platform" in response.text
+    assert "Create Agent" in response.text
+    assert "Tool Config" in response.text
+    assert "Prompt Editor" in response.text
+    assert "Governance" in response.text
     assert "/studio/evaluations" in response.text
     assert "/studio/deployments" in response.text
     assert "loadAll" in response.text

@@ -80,97 +80,274 @@ body{margin:0;background:#f7f8fa;color:#20242c;font-family:Inter,Segoe UI,Arial,
 
     @app.get("/studio", response_class=HTMLResponse)
     def local_agent_studio() -> str:
-        return """
+        return r"""
 <!doctype html>
 <html lang="en">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Agent Studio</title>
+  <title>Enterprise Agentic Platform</title>
   <style>
     :root { color-scheme: light; font-family: Inter, Segoe UI, Arial, sans-serif; }
-    body { margin: 0; background: #f7f8fa; color: #20242c; }
-    header { background: #ffffff; border-bottom: 1px solid #d9dee7; padding: 14px 22px; display: flex; align-items: center; gap: 16px; }
-    h1 { font-size: 20px; margin: 0; font-weight: 650; }
-    nav { margin-left: auto; display: flex; gap: 8px; flex-wrap: wrap; }
-    nav a { color: #27364a; text-decoration: none; border: 1px solid #c8d0dc; border-radius: 6px; padding: 8px 10px; font-size: 13px; background: #ffffff; }
-    main { padding: 20px 22px; display: grid; gap: 18px; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); }
-    section { background: #ffffff; border: 1px solid #d9dee7; border-radius: 8px; padding: 16px; min-height: 220px; }
-    .wide { grid-column: 1 / -1; min-height: 0; }
-    .tiles { display: grid; gap: 12px; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); }
-    .tile { border: 1px solid #d9dee7; border-radius: 8px; padding: 14px; background: #fbfcfe; }
-    .tile h3 { margin: 0 0 8px; font-size: 14px; }
-    .tile p { margin: 0 0 12px; color: #5b6472; font-size: 13px; line-height: 1.4; }
-    .tile a { display: inline-block; color: #ffffff; background: #27364a; border-radius: 6px; padding: 8px 10px; font-size: 13px; text-decoration: none; }
-    h2 { font-size: 15px; margin: 0 0 12px; }
-    label { font-size: 12px; color: #555f70; display: block; margin-bottom: 4px; }
-    input { height: 34px; border: 1px solid #b9c1ce; border-radius: 6px; padding: 0 10px; min-width: 220px; }
-    button { height: 36px; border: 1px solid #27364a; border-radius: 6px; background: #27364a; color: white; padding: 0 12px; cursor: pointer; }
-    table { width: 100%; border-collapse: collapse; font-size: 13px; }
-    th, td { text-align: left; padding: 8px; border-bottom: 1px solid #eef1f5; vertical-align: top; }
-    th { color: #5d6675; font-weight: 600; }
+    * { box-sizing: border-box; }
+    body { margin: 0; background: #f4f6f9; color: #172033; }
+    .shell { min-height: 100vh; display: grid; grid-template-columns: 260px 1fr; }
+    aside { background: #111827; color: #ffffff; padding: 18px 14px; position: sticky; top: 0; height: 100vh; }
+    .brand { font-size: 18px; font-weight: 700; line-height: 1.25; margin: 4px 8px 18px; }
+    .subtitle { color: #b9c3d4; font-size: 12px; margin: -8px 8px 16px; line-height: 1.35; }
+    nav { display: grid; gap: 6px; }
+    nav button { width: 100%; text-align: left; color: #d9e2f1; background: transparent; border: 1px solid transparent; border-radius: 7px; padding: 10px 11px; cursor: pointer; font-size: 13px; }
+    nav button.active, nav button:hover { background: #243247; color: #ffffff; border-color: #37465c; }
+    header { background: #ffffff; border-bottom: 1px solid #d8dee8; padding: 14px 22px; display: flex; gap: 14px; align-items: end; flex-wrap: wrap; }
+    header h1 { margin: 0 18px 0 0; font-size: 22px; min-width: 260px; }
+    main { padding: 20px 22px 36px; display: grid; gap: 16px; }
     .toolbar { display: flex; gap: 10px; align-items: end; flex-wrap: wrap; }
-    .empty { color: #6b7280; font-size: 13px; }
+    label { font-size: 12px; color: #526074; display: block; margin-bottom: 4px; }
+    input, select, textarea { width: 100%; border: 1px solid #b8c1cf; border-radius: 7px; padding: 9px 10px; font: inherit; background: #ffffff; color: #172033; }
+    input, select { height: 38px; }
+    textarea { min-height: 96px; resize: vertical; }
+    button.primary, a.primary { height: 38px; border: 1px solid #1f334f; border-radius: 7px; background: #1f334f; color: #ffffff; padding: 0 13px; cursor: pointer; text-decoration: none; display: inline-flex; align-items: center; justify-content: center; font-size: 13px; }
+    button.secondary { height: 38px; border: 1px solid #b8c1cf; border-radius: 7px; background: #ffffff; color: #243247; padding: 0 13px; cursor: pointer; }
+    .panel { display: none; }
+    .panel.active { display: grid; gap: 16px; }
+    .grid { display: grid; gap: 16px; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); }
+    .card { background: #ffffff; border: 1px solid #d8dee8; border-radius: 8px; padding: 16px; }
+    .card h2 { margin: 0 0 12px; font-size: 16px; }
+    .card h3 { margin: 0 0 10px; font-size: 14px; }
+    .form-grid { display: grid; gap: 12px; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); }
+    .span-all { grid-column: 1 / -1; }
+    table { width: 100%; border-collapse: collapse; font-size: 13px; }
+    th, td { text-align: left; padding: 8px; border-bottom: 1px solid #edf1f6; vertical-align: top; }
+    th { color: #526074; font-weight: 650; }
+    .empty, .hint { color: #697386; font-size: 13px; line-height: 1.45; }
+    .status { min-height: 20px; color: #355c2d; font-size: 13px; margin-top: 10px; }
+    .error { color: #a33a2a; }
+    .kpi { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; }
+    .metric { background: #ffffff; border: 1px solid #d8dee8; border-radius: 8px; padding: 14px; }
+    .metric strong { display: block; font-size: 24px; margin-top: 4px; }
+    .pill { display: inline-block; border: 1px solid #cbd4e2; border-radius: 999px; padding: 3px 8px; font-size: 12px; color: #3d4b60; background: #f8fafc; }
+    @media (max-width: 860px) { .shell { grid-template-columns: 1fr; } aside { position: relative; height: auto; } nav { grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); } header h1 { min-width: auto; } }
   </style>
 </head>
 <body>
-  <header>
-    <h1>Agent Studio</h1>
-    <nav>
-      <a href="/studio">Studio Home</a>
-      <a href="/studio/evaluations">Evaluation Workspace</a>
-      <a href="/studio/deployments">Deployment Console</a>
-    </nav>
-    <div class="toolbar">
-      <div><label for="tenant">Tenant</label><input id="tenant" value="tenant-a" /></div>
-      <div><label for="apiKey">API Key</label><input id="apiKey" type="password" placeholder="optional" /></div>
-      <button onclick="loadAll()">Refresh</button>
+  <div class="shell">
+    <aside>
+      <div class="brand">Enterprise Agentic Platform</div>
+      <div class="subtitle">Agent Studio, tools, prompts, evaluation, deployment, governance, and operations.</div>
+      <nav aria-label="Studio modules">
+        <button class="active" data-tab="dashboard">Dashboard</button>
+        <button data-tab="agents">Create Agent</button>
+        <button data-tab="drafts">Agent Designer</button>
+        <button data-tab="tools">Tool Config</button>
+        <button data-tab="prompts">Prompt Editor</button>
+        <button data-tab="evaluation">Evaluation</button>
+        <button data-tab="deployment">Deployment</button>
+        <button data-tab="governance">Governance</button>
+        <button data-tab="operations">Operations</button>
+      </nav>
+    </aside>
+    <div>
+      <header>
+        <h1>Agent Studio</h1>
+        <div class="toolbar">
+          <div><label for="tenant">Tenant</label><input id="tenant" value="tenant-a" /></div>
+          <div><label for="apiKey">API Key</label><input id="apiKey" type="password" placeholder="optional" /></div>
+          <button class="primary" onclick="loadAll()">Refresh</button>
+        </div>
+      </header>
+      <main>
+        <section id="dashboard" class="panel active">
+          <div class="kpi">
+            <div class="metric">Agents<strong id="agentCount">0</strong></div>
+            <div class="metric">Drafts<strong id="draftCount">0</strong></div>
+            <div class="metric">Tools<strong id="toolCount">0</strong></div>
+            <div class="metric">Open Gates<strong>4</strong></div>
+          </div>
+          <div class="grid">
+            <div class="card"><h2>Platform Workbench</h2><p class="hint">Use the left navigation to create agents, design manifests, configure tools, edit prompts, run evaluations, review deployment gates, and inspect governance controls.</p></div>
+            <div class="card"><h2>Quick Links</h2><p><a class="primary" href="/studio/evaluations">Evaluation Workspace</a> <a class="primary" href="/studio/deployments">Deployment Console</a> <a class="primary" href="/docs">API Docs</a></p></div>
+          </div>
+        </section>
+
+        <section id="agents" class="panel">
+          <div class="grid">
+            <div class="card">
+              <h2>Create Agent</h2>
+              <div class="form-grid">
+                <div><label for="agentName">Name</label><input id="agentName" value="Customer Support Agent" /></div>
+                <div><label for="agentOwner">Owner</label><input id="agentOwner" value="ai-platform-team" /></div>
+                <div><label for="agentRisk">Risk</label><select id="agentRisk"><option>low</option><option selected>medium</option><option>high</option><option>critical</option></select></div>
+              </div>
+              <button class="primary" onclick="createAgent()">Create Agent</button>
+              <div id="agentStatus" class="status"></div>
+            </div>
+            <div class="card"><h2>Agent Registry</h2><div id="agentsTable" class="empty">No agents loaded.</div></div>
+          </div>
+        </section>
+
+        <section id="drafts" class="panel">
+          <div class="grid">
+            <div class="card">
+              <h2>Agent Designer</h2>
+              <div class="form-grid">
+                <div><label for="draftName">Draft Name</label><input id="draftName" value="Claims Research Agent" /></div>
+                <div><label for="draftOwner">Owner</label><input id="draftOwner" value="claims-team" /></div>
+                <div><label for="draftVersion">Version</label><input id="draftVersion" value="0.1.0" /></div>
+                <div><label for="draftRisk">Risk</label><select id="draftRisk"><option>low</option><option selected>medium</option><option>high</option><option>critical</option></select></div>
+                <div><label for="draftRole">Role</label><input id="draftRole" value="claims-research-specialist" /></div>
+                <div><label for="draftGoal">Goal</label><input id="draftGoal" value="research claim context with governed tools and RAG" /></div>
+              </div>
+              <button class="primary" onclick="createDraft()">Create Draft</button>
+              <div id="draftStatus" class="status"></div>
+            </div>
+            <div class="card"><h2>Drafts</h2><div id="draftsTable" class="empty">No drafts loaded.</div></div>
+          </div>
+        </section>
+
+        <section id="tools" class="panel">
+          <div class="grid">
+            <div class="card">
+              <h2>Tool Config</h2>
+              <div class="form-grid">
+                <div><label for="toolName">Tool Name</label><input id="toolName" value="crm.lookup" /></div>
+                <div><label for="toolRisk">Risk</label><select id="toolRisk"><option>low</option><option selected>medium</option><option>high</option><option>critical</option></select></div>
+                <div><label for="toolTimeout">Timeout Seconds</label><input id="toolTimeout" type="number" value="30" /></div>
+                <div class="span-all"><label for="toolAgents">Allowed Agents</label><input id="toolAgents" value="agent.customer-support" /></div>
+                <div class="span-all"><label for="toolActions">Allowed Actions</label><input id="toolActions" value="read,search" /></div>
+                <div class="span-all"><label for="toolDescription">Description</label><textarea id="toolDescription">Lookup customer profile records with audited read-only access.</textarea></div>
+              </div>
+              <button class="primary" onclick="saveTool()">Save Tool Config</button>
+              <div id="toolStatus" class="status"></div>
+            </div>
+            <div class="card"><h2>Configured Tools</h2><div id="toolsTable" class="empty">No tools configured.</div></div>
+          </div>
+        </section>
+
+        <section id="prompts" class="panel">
+          <div class="grid">
+            <div class="card">
+              <h2>Prompt Editor</h2>
+              <div class="form-grid">
+                <div><label for="promptName">Template Name</label><input id="promptName" value="support-triage" /></div>
+                <div><label for="promptVersion">Version</label><input id="promptVersion" value="1.0.0" /></div>
+                <div class="span-all"><label for="promptText">Prompt</label><textarea id="promptText">You are a governed enterprise agent. Answer using only approved context for {customer_id}.</textarea></div>
+              </div>
+              <button class="primary" onclick="savePrompt()">Save Prompt</button>
+              <div id="promptStatus" class="status"></div>
+            </div>
+            <div class="card"><h2>Prompt Assets</h2><div id="promptsTable" class="empty">No prompts saved.</div></div>
+          </div>
+        </section>
+
+        <section id="evaluation" class="panel">
+          <div class="grid">
+            <div class="card"><h2>Evaluation Workspace</h2><p class="hint">Configure offline golden datasets, prompt regression, user feedback, human scoring, LLM-as-judge, and safety checks.</p><table><thead><tr><th>Suite</th><th>Mode</th><th>Status</th></tr></thead><tbody><tr><td>Golden Dataset Smoke</td><td>offline</td><td><span class="pill">ready</span></td></tr><tr><td>Safety Regression</td><td>safety</td><td><span class="pill">ready</span></td></tr><tr><td>Prompt Regression</td><td>judge</td><td><span class="pill">planned</span></td></tr></tbody></table></div>
+            <div class="card"><h2>Quality Gates</h2><p class="hint">Minimum score: 0.80. Safety gates: groundedness, hallucination, toxicity, PII leakage, and prompt injection resilience.</p><a class="primary" href="/studio/evaluations">Open full evaluation page</a></div>
+          </div>
+        </section>
+
+        <section id="deployment" class="panel">
+          <div class="grid">
+            <div class="card"><h2>Deployment Console</h2><table><thead><tr><th>Gate</th><th>Status</th><th>Evidence</th></tr></thead><tbody><tr><td>Policy</td><td><span class="pill">passed</span></td><td>tenant and risk policy</td></tr><tr><td>Evaluation</td><td><span class="pill">pending</span></td><td>golden dataset result</td></tr><tr><td>Responsible AI</td><td><span class="pill">passed</span></td><td>model risk record</td></tr><tr><td>AISecOps</td><td><span class="pill">passed</span></td><td>monitoring signals</td></tr></tbody></table></div>
+            <div class="card"><h2>Target</h2><div class="form-grid"><div><label>Environment</label><select><option>local</option><option>dev</option><option>test</option><option>prod</option></select></div><div><label>Runtime URL</label><input value="http://localhost:8002" /></div></div><p><a class="primary" href="/studio/deployments">Open deployment page</a></p></div>
+          </div>
+        </section>
+
+        <section id="governance" class="panel">
+          <div class="grid">
+            <div class="card"><h2>Responsible AI</h2><p class="hint">Fairness testing, bias detection, sensitive attribute monitoring, explainability reports, model risk tracking, and regulatory evidence generation.</p></div>
+            <div class="card"><h2>AISecOps</h2><p class="hint">Prompt attack monitoring, agent behavior monitoring, RAG poisoning monitoring, model drift detection, tool abuse detection, and anomaly detection.</p></div>
+            <div class="card"><h2>Memory Governance</h2><table><thead><tr><th>Memory Type</th><th>Retention</th></tr></thead><tbody><tr><td>Session</td><td>24 hrs</td></tr><tr><td>Conversation</td><td>90 days</td></tr><tr><td>Agent Working Memory</td><td>Runtime only</td></tr><tr><td>Semantic Memory</td><td>Policy controlled</td></tr><tr><td>Human Decisions</td><td>7 years</td></tr></tbody></table></div>
+          </div>
+        </section>
+
+        <section id="operations" class="panel">
+          <div class="grid">
+            <div class="card"><h2>AI FinOps</h2><p class="hint">Track cost per tenant, agent, workflow, department, token trends, budgets, chargeback, and showback.</p></div>
+            <div class="card"><h2>Runtime Operations</h2><p class="hint">Observe traces, metrics, event bus activity, background worker jobs, Kubernetes readiness, and security posture.</p></div>
+            <div class="card"><h2>Local APIs</h2><p><a class="primary" href="/docs">Control Plane API docs</a></p><p class="hint">Runtime API is usually available separately on port 8002 when started.</p></div>
+          </div>
+        </section>
+      </main>
     </div>
-  </header>
-  <main>
-    <section class="wide">
-      <h2>Step 41-48 Production Surfaces</h2>
-      <div class="tiles">
-        <div class="tile"><h3>Evaluation Workspace</h3><p>Run offline, online, judge, and safety evaluation workflows from the new evaluation surface.</p><a href="/studio/evaluations">Open evaluations</a></div>
-        <div class="tile"><h3>Deployment Console</h3><p>Inspect deployment gates for policy, evaluation, Responsible AI, and AISecOps readiness.</p><a href="/studio/deployments">Open deployments</a></div>
-        <div class="tile"><h3>Production Hardening</h3><p>Steps 43-48 added optional API key auth, Postgres planning, events, workers, Kubernetes hardening, and security checks.</p><a href="/docs">Open API docs</a></div>
-      </div>
-    </section>
-    <section><h2>Agents</h2><div id="agents" class="empty">No data loaded.</div></section>
-    <section><h2>Drafts</h2><div id="drafts" class="empty">No data loaded.</div></section>
-  </main>
+  </div>
   <script>
-    function headers() {
-      const requestHeaders = { 'X-Tenant-ID': document.getElementById('tenant').value };
+    const state = { agents: [], drafts: [], tools: JSON.parse(localStorage.getItem('studioTools') || '[]'), prompts: JSON.parse(localStorage.getItem('studioPrompts') || '[]') };
+    document.querySelectorAll('nav button').forEach(button => button.addEventListener('click', () => showTab(button.dataset.tab)));
+    function showTab(tab) {
+      document.querySelectorAll('nav button').forEach(button => button.classList.toggle('active', button.dataset.tab === tab));
+      document.querySelectorAll('.panel').forEach(panel => panel.classList.toggle('active', panel.id === tab));
+    }
+    function requestHeaders() {
+      const headers = { 'X-Tenant-ID': document.getElementById('tenant').value, 'Content-Type': 'application/json' };
       const apiKey = document.getElementById('apiKey').value;
-      if (apiKey) requestHeaders['X-API-Key'] = apiKey;
-      return requestHeaders;
+      if (apiKey) headers['X-API-Key'] = apiKey;
+      return headers;
     }
     function table(rows, columns) {
       if (!rows.length) return '<p class="empty">Nothing found.</p>';
-      return '<table><thead><tr>' + columns.map(c => '<th>' + c.label + '</th>').join('') + '</tr></thead><tbody>' +
-        rows.map(row => '<tr>' + columns.map(c => '<td>' + (c.value(row) ?? '') + '</td>').join('') + '</tr>').join('') + '</tbody></table>';
+      return '<table><thead><tr>' + columns.map(c => '<th>' + c.label + '</th>').join('') + '</tr></thead><tbody>' + rows.map(row => '<tr>' + columns.map(c => '<td>' + (c.value(row) ?? '') + '</td>').join('') + '</tr>').join('') + '</tbody></table>';
+    }
+    function setStatus(id, text, isError = false) {
+      const element = document.getElementById(id);
+      element.textContent = text;
+      element.classList.toggle('error', isError);
     }
     async function loadAll() {
       const [agentsResponse, draftsResponse] = await Promise.all([
-        fetch('/agents', { headers: headers() }),
-        fetch('/studio/agent-drafts', { headers: headers() })
+        fetch('/agents', { headers: requestHeaders() }),
+        fetch('/studio/agent-drafts', { headers: requestHeaders() })
       ]);
-      const agents = agentsResponse.ok ? (await agentsResponse.json()).agents : [];
-      const drafts = draftsResponse.ok ? (await draftsResponse.json()).drafts : [];
-      document.getElementById('agents').innerHTML = table(agents, [
-        { label: 'Name', value: r => r.name },
-        { label: 'Owner', value: r => r.owner },
-        { label: 'Status', value: r => r.status },
-        { label: 'Risk', value: r => r.risk_class }
+      state.agents = agentsResponse.ok ? (await agentsResponse.json()).agents : [];
+      state.drafts = draftsResponse.ok ? (await draftsResponse.json()).drafts : [];
+      renderAll();
+    }
+    function renderAll() {
+      document.getElementById('agentCount').textContent = state.agents.length;
+      document.getElementById('draftCount').textContent = state.drafts.length;
+      document.getElementById('toolCount').textContent = state.tools.length;
+      document.getElementById('agentsTable').innerHTML = table(state.agents, [
+        { label: 'Name', value: r => r.name }, { label: 'Owner', value: r => r.owner }, { label: 'Status', value: r => r.status }, { label: 'Risk', value: r => r.risk_class }
       ]);
-      document.getElementById('drafts').innerHTML = table(drafts, [
-        { label: 'Name', value: r => r.name },
-        { label: 'Owner', value: r => r.owner },
-        { label: 'Status', value: r => r.status },
-        { label: 'Version', value: r => r.manifest?.version }
+      document.getElementById('draftsTable').innerHTML = table(state.drafts, [
+        { label: 'Name', value: r => r.name }, { label: 'Owner', value: r => r.owner }, { label: 'Status', value: r => r.status }, { label: 'Version', value: r => r.manifest?.version }
+      ]);
+      document.getElementById('toolsTable').innerHTML = table(state.tools, [
+        { label: 'Name', value: r => r.name }, { label: 'Risk', value: r => r.risk }, { label: 'Agents', value: r => r.agents }, { label: 'Actions', value: r => r.actions }
+      ]);
+      document.getElementById('promptsTable').innerHTML = table(state.prompts, [
+        { label: 'Name', value: r => r.name }, { label: 'Version', value: r => r.version }, { label: 'Variables', value: r => (r.text.match(/\{[^}]+\}/g) || []).join(', ') }
       ]);
     }
+    async function createAgent() {
+      const payload = { name: document.getElementById('agentName').value, owner: document.getElementById('agentOwner').value, risk_class: document.getElementById('agentRisk').value };
+      const response = await fetch('/agents', { method: 'POST', headers: requestHeaders(), body: JSON.stringify(payload) });
+      if (!response.ok) { setStatus('agentStatus', 'Create failed: ' + await response.text(), true); return; }
+      setStatus('agentStatus', 'Agent created.');
+      await loadAll();
+    }
+    async function createDraft() {
+      const name = document.getElementById('draftName').value;
+      const manifest = { id: 'agent.' + name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, ''), name, version: document.getElementById('draftVersion').value, role: document.getElementById('draftRole').value, goal: document.getElementById('draftGoal').value, model: { provider: 'mock', model: 'mock-model' } };
+      const payload = { name, owner: document.getElementById('draftOwner').value, risk_class: document.getElementById('draftRisk').value, manifest };
+      const response = await fetch('/studio/agent-drafts', { method: 'POST', headers: requestHeaders(), body: JSON.stringify(payload) });
+      if (!response.ok) { setStatus('draftStatus', 'Draft failed: ' + await response.text(), true); return; }
+      setStatus('draftStatus', 'Draft created.');
+      await loadAll();
+    }
+    function saveTool() {
+      state.tools.push({ name: document.getElementById('toolName').value, risk: document.getElementById('toolRisk').value, agents: document.getElementById('toolAgents').value, actions: document.getElementById('toolActions').value, timeout: document.getElementById('toolTimeout').value, description: document.getElementById('toolDescription').value });
+      localStorage.setItem('studioTools', JSON.stringify(state.tools));
+      setStatus('toolStatus', 'Tool configuration saved locally. Backend tool APIs are the next integration step.');
+      renderAll();
+    }
+    function savePrompt() {
+      state.prompts.push({ name: document.getElementById('promptName').value, version: document.getElementById('promptVersion').value, text: document.getElementById('promptText').value });
+      localStorage.setItem('studioPrompts', JSON.stringify(state.prompts));
+      setStatus('promptStatus', 'Prompt saved locally. Backend prompt APIs are the next integration step.');
+      renderAll();
+    }
+    renderAll();
     loadAll();
   </script>
 </body>
