@@ -126,14 +126,17 @@ def test_local_agent_studio_page_loads() -> None:
 
     assert response.status_code == 200
     assert "Agent Studio" in response.text
-    assert "Enterprise Agentic Platform" in response.text
-    assert "Create Agent" in response.text
-    assert "Tool Config" in response.text
+    assert "Nexus AI Platform" in response.text
+    assert "Agent Blueprint" in response.text
+    assert "Agent Definition" in response.text
+    assert "Workflow Designer" in response.text
     assert "Prompt Editor" in response.text
-    assert "Governance" in response.text
-    assert "/studio/evaluations" in response.text
-    assert "/studio/deployments" in response.text
-    assert "loadAll" in response.text
+    assert "Tools & Rules" in response.text
+    assert "refreshManifest" in response.text
+    assert "savePrompt" in response.text
+    assert "saveTool" in response.text
+    assert "saveRule" in response.text
+    assert "addNode" in response.text
 
 
 def test_evaluation_workspace_and_deployment_console_pages_load() -> None:
