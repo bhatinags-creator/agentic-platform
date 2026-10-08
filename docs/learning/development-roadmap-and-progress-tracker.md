@@ -4,12 +4,12 @@ Last updated: 2026-10-06
 
 ## Current Status
 
-We have completed Steps 01 to 30.
+We have completed Steps 01 to 35.
 
 Current platform stage:
 
 ```text
-Foundation + Control Plane MVP + Runtime Plane MVP + Governance Hooks + Persistent Runtime Stores + Agent Studio Foundations + Evaluation + Responsible AI + AISecOps + Tool Governance + MCP + RAG Platform
+Foundation + Control Plane MVP + Runtime Plane MVP + Governance Hooks + Persistent Runtime Stores + Agent Studio Foundations + Evaluation + Responsible AI + AISecOps + Tool Governance + MCP + RAG Platform + Deployment + Human Approval
 ```
 
 The platform can currently:
@@ -38,6 +38,10 @@ The platform can currently:
 - register and govern tool invocation
 - register MCP servers and list MCP tools/resources
 - register knowledge bases, ingest documents, create chunks, attach citations, and govern retrieval safety
+- create deployment targets and deployment records
+- evaluate deployment gates and roll back deployments
+- bootstrap local APIs with PowerShell scripts
+- create human approval tasks and pause/resume runtime runs
 
 Current verification baseline:
 
@@ -455,19 +459,19 @@ Purpose: Track citations, source permissions, and RAG safety.
 
 ### Step 31 - Deployment Service MVP
 
-Status: Next
+Status: Done
 
 Purpose: Deploy published agent versions into runtime environments.
 
 ### Step 32 - Deployment Gates
 
-Status: Planned
+Status: Done
 
 Purpose: Block deployment unless policy, evaluation, Responsible AI, and security checks pass.
 
 ### Step 33 - Local Laptop Deployment Scripts
 
-Status: Planned
+Status: Done
 
 Purpose: Make local startup easy.
 
@@ -475,13 +479,13 @@ Purpose: Make local startup easy.
 
 ### Step 34 - Human Task Service MVP
 
-Status: Planned
+Status: Done
 
 Purpose: Create and track human approvals.
 
 ### Step 35 - Runtime Human Approval Checkpoints
 
-Status: Planned
+Status: Done
 
 Purpose: Pause runs when policy requires human approval.
 
@@ -489,7 +493,7 @@ Purpose: Pause runs when policy requires human approval.
 
 ### Step 36 - Trace and Span Model
 
-Status: Planned
+Status: Next
 
 Purpose: Standardize traces across runtime calls.
 
@@ -575,16 +579,16 @@ Purpose: Harden platform security posture.
 
 Recommended immediate sequence from our current point:
 
-1. Step 31 - Deployment Service MVP
-2. Step 32 - Deployment Gates
-3. Step 33 - Local Laptop Deployment Scripts
-4. Step 34 - Human Task Service MVP
-5. Step 35 - Runtime Human Approval Checkpoints
-6. Step 36 - Trace and Span Model
-7. Step 37 - Metrics API
-8. Step 38 - Python SDK Expansion
-9. Step 39 - CLI Tool
-10. Step 40 - Minimal Local Agent Studio UI
+1. Step 36 - Trace and Span Model
+2. Step 37 - Metrics API
+3. Step 38 - Python SDK Expansion
+4. Step 39 - CLI Tool
+5. Step 40 - Minimal Local Agent Studio UI
+6. Step 41 - Evaluation Workspace UI
+7. Step 42 - Deployment Console UI
+8. Step 43 - Authentication and Authorization
+9. Step 44 - Postgres Migration
+10. Step 45 - Event Bus Integration
 
 ## Progress Summary
 
@@ -620,10 +624,15 @@ Completed:
 - Step 28 - Knowledge Base Registry
 - Step 29 - Ingestion Pipeline MVP
 - Step 30 - Retrieval Governance
+- Step 31 - Deployment Service MVP
+- Step 32 - Deployment Gates
+- Step 33 - Local Laptop Deployment Scripts
+- Step 34 - Human Task Service MVP
+- Step 35 - Runtime Human Approval Checkpoints
 
 Next:
 
-- Step 31 - Deployment Service MVP
+- Step 36 - Trace and Span Model
 
 Total roadmap steps listed:
 
@@ -634,16 +643,17 @@ Total roadmap steps listed:
 Completed:
 
 ```text
-30 / 48
+35 / 48
 ```
 
 Approximate completion:
 
 ```text
-62.5%
+72.9%
 ```
 
 Note: the percentage is based on planned development steps, not calendar effort. Some later steps are larger than early ones.
+
 
 
 

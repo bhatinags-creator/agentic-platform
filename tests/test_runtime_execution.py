@@ -180,6 +180,74 @@ async def test_runtime_execution_saves_failed_run_when_budget_is_exceeded() -> N
     ]
 
 
+@pytest.mark.anyio
+async def test_runtime_execution_waits_for_human_approval_checkpoint() -> None:
+    service = RuntimeExecutionService()
+
+    run = await service.start_run(
+        tenant_id="tenant-a",
+        user_id="user-1",
+        agent_id="agent.customer-support",
+        agent_version="1.0.0",
+        input_payload={
+            "message": "approve before running",
+            "requires_human_approval": True,
+            "approval_prompt": "Approve support response",
+            "assigned_approver": "manager-1",
+        },
+    )
+
+    assert run.status == AgentRunStatus.WAITING_FOR_HUMAN
+    assert run.output is not None
+    task_id = run.output["human_task"]["human_task_id"]
+    assert service.human_task_service.list_tasks("tenant-a", status="pending")[0].assigned_to == "manager-1"
+
+    resumed = service.resume_after_human_approval(
+        tenant_id="tenant-a",
+        run_id=run.run_id,
+        human_task_id=task_id,
+        approved=True,
+        decided_by="manager-1",
+        comment="approved",
+    )
+
+    assert resumed.status == AgentRunStatus.COMPLETED
+    assert resumed.output["human_approval"]["approved"] is True
+    events = service.list_audit_events(tenant_id="tenant-a", trace_id=run.trace_id)
+    assert [event.event_type for event in events] == [
+        "agent_run.started",
+        "agent_run.policy_evaluated",
+        "agent_run.waiting_for_human",
+        "agent_run.human_approval_decided",
+    ]
+
+
+@pytest.mark.anyio
+async def test_runtime_execution_rejects_run_after_human_denial() -> None:
+    service = RuntimeExecutionService()
+
+    run = await service.start_run(
+        tenant_id="tenant-a",
+        user_id="user-1",
+        agent_id="agent.customer-support",
+        agent_version="1.0.0",
+        input_payload={"requires_human_approval": True},
+    )
+    task_id = run.output["human_task"]["human_task_id"]
+
+    resumed = service.resume_after_human_approval(
+        tenant_id="tenant-a",
+        run_id=run.run_id,
+        human_task_id=task_id,
+        approved=False,
+        decided_by="manager-1",
+        comment="too risky",
+    )
+
+    assert resumed.status == AgentRunStatus.FAILED
+    assert resumed.output["error"] == "human_approval_rejected"
+
+
 def test_runtime_execution_lists_runs_by_tenant(anyio_backend_name) -> None:
     assert anyio_backend_name in {"asyncio", "trio"}
 

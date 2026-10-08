@@ -8,6 +8,7 @@ from platform_common.events.envelope import ActorType, EventEnvelope
 from services.aisecops.service import AISecOpsMonitoringService, AISecOpsSignal
 from services.audit_service.service import AuditService
 from services.finops_service.service import AIFinOpsService, BudgetExceededError, CostEvent
+from services.human_task_service.service import HumanTaskService
 from services.memory_governance.service import MemoryGovernanceService, MemoryRecord, MemoryType
 from services.model_gateway.service import ModelGatewayService
 from services.policy_engine.service import PolicyEngineService
@@ -45,7 +46,6 @@ class AgentRunRepository(ABC):
     def save_run(self, run: AgentRun) -> AgentRun:
         raise NotImplementedError
 
-    @abstractmethod
     def get_run(self, tenant_id: str, run_id: UUID) -> AgentRun | None:
         raise NotImplementedError
 
@@ -92,6 +92,7 @@ class RuntimeExecutionService:
         memory_governance: MemoryGovernanceService | None = None,
         responsible_ai_service: ResponsibleAIService | None = None,
         aisecops_service: AISecOpsMonitoringService | None = None,
+        human_task_service: HumanTaskService | None = None,
     ) -> None:
         self.repository = repository or InMemoryAgentRunRepository()
         self.model_gateway = model_gateway or ModelGatewayService()
@@ -103,6 +104,7 @@ class RuntimeExecutionService:
         self.memory_governance = memory_governance or MemoryGovernanceService()
         self.responsible_ai_service = responsible_ai_service or ResponsibleAIService()
         self.aisecops_service = aisecops_service or AISecOpsMonitoringService()
+        self.human_task_service = human_task_service or HumanTaskService()
 
     async def start_run(
         self,
@@ -164,6 +166,35 @@ class RuntimeExecutionService:
                 {"policy_decision_id": str(policy_decision.decision_id)},
             )
             raise RuntimePolicyDeniedError("Policy denied agent run", denied_run, policy_decision)
+
+        if input_payload.get("requires_human_approval") is True:
+            human_task = self.human_task_service.create_approval_task(
+                tenant_id=tenant_id,
+                run_id=str(running_run.run_id),
+                prompt=input_payload.get("approval_prompt", "Approve agent run before execution"),
+                assigned_to=input_payload.get("assigned_approver"),
+            )
+            waiting_run = running_run.model_copy(
+                update={
+                    "status": AgentRunStatus.WAITING_FOR_HUMAN,
+                    "output": {
+                        "checkpoint": "human_approval",
+                        "human_task": {
+                            "human_task_id": str(human_task.human_task_id),
+                            "status": human_task.status,
+                            "prompt": human_task.prompt,
+                            "assigned_to": human_task.assigned_to,
+                        },
+                    },
+                }
+            )
+            self.repository.save_run(waiting_run)
+            self._write_audit_event(
+                "agent_run.waiting_for_human",
+                waiting_run,
+                {"human_task_id": str(human_task.human_task_id)},
+            )
+            return waiting_run
 
         try:
             aisecops_signals: list[AISecOpsSignal] = []
@@ -345,6 +376,55 @@ class RuntimeExecutionService:
         except Exception as exc:
             failed_run = self._record_failed_run(running_run, "execution_failed", str(exc))
             raise RuntimeExecutionFailedError(str(exc), failed_run, "execution_failed") from exc
+
+    def resume_after_human_approval(
+        self,
+        *,
+        tenant_id: str,
+        run_id: UUID | str,
+        human_task_id: UUID | str,
+        approved: bool,
+        decided_by: str,
+        comment: str | None = None,
+    ) -> AgentRun:
+        run = self.get_run(tenant_id, run_id)
+        if run.status != AgentRunStatus.WAITING_FOR_HUMAN:
+            raise RuntimeExecutionFailedError(
+                "Agent run is not waiting for human approval",
+                run,
+                "run_not_waiting_for_human",
+            )
+        task = self.human_task_service.decide_task(
+            tenant_id=tenant_id,
+            task_id=human_task_id,
+            approved=approved,
+            decided_by=decided_by,
+            comment=comment,
+        )
+        status = AgentRunStatus.COMPLETED if approved else AgentRunStatus.FAILED
+        output = {
+            **(run.output or {}),
+            "human_approval": {
+                "human_task_id": str(task.human_task_id),
+                "approved": approved,
+                "decided_by": decided_by,
+                "comment": comment,
+            },
+        }
+        if not approved:
+            output["error"] = "human_approval_rejected"
+        resumed_run = run.model_copy(update={"status": status, "output": output})
+        self.repository.save_run(resumed_run)
+        self._write_audit_event(
+            "agent_run.human_approval_decided",
+            resumed_run,
+            {
+                "human_task_id": str(task.human_task_id),
+                "approved": approved,
+                "decided_by": decided_by,
+            },
+        )
+        return resumed_run
 
     def get_run(self, tenant_id: str, run_id: UUID | str) -> AgentRun:
         run_uuid = self._parse_uuid(run_id)

@@ -1036,3 +1036,37 @@ Key classes:
 - `RetrievalResult`: retrieved text with score, citation, and safety metadata.
 - `RetrievalGovernanceReport`: aggregate retrieval safety report.
 - `RAGPlatformService`: registers knowledge bases, ingests documents, searches chunks, governs retrievals, and supports runtime retrieval fallback.
+
+## Deployment Service
+
+File:
+
+- `services/deployment_service/service.py`
+
+Key classes:
+
+- `DeploymentEnvironment`: local/dev/test/prod target enum.
+- `DeploymentStatus`: created, blocked, deployed, rolled back.
+- `DeploymentGateType`: policy, evaluation, Responsible AI, AISecOps.
+- `DeploymentGateStatus`: passed, failed, not run.
+- `DeploymentTarget`: tenant-scoped deployment target.
+- `DeploymentGateResult`: one gate decision and evidence.
+- `DeploymentRecord`: deployment state for one agent version.
+- `DeploymentService`: registers targets, creates deployments, evaluates gates, deploys, rolls back, and lists deployment records.
+
+## Human Task Service
+
+File:
+
+- `services/human_task_service/service.py`
+
+Key classes:
+
+- `HumanTaskStatus`: pending, approved, rejected, cancelled.
+- `HumanTask`: approval task state.
+- `HumanApprovalDecision`: decision payload.
+- `HumanTaskService`: creates, loads, lists, and decides human approval tasks.
+
+Runtime integration:
+
+`RuntimeExecutionService` now creates approval tasks and returns `WAITING_FOR_HUMAN` runs when runtime input asks for human approval. The `resume_after_human_approval(...)` method records the decision and marks the run completed or failed.
