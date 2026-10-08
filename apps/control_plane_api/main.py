@@ -7,6 +7,7 @@ from typing import Annotated
 from uuid import UUID
 
 from fastapi import FastAPI, Header, HTTPException, Request, status
+from fastapi.responses import HTMLResponse
 
 from apps.control_plane_api.schemas import (
     AgentDraftListResponse,
@@ -55,6 +56,78 @@ def create_app(
     @app.get("/health")
     def health() -> dict[str, str]:
         return {"status": "ok", "service": "control-plane-api"}
+
+    @app.get("/studio", response_class=HTMLResponse)
+    def local_agent_studio() -> str:
+        return """
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Agent Studio</title>
+  <style>
+    :root { color-scheme: light; font-family: Inter, Segoe UI, Arial, sans-serif; }
+    body { margin: 0; background: #f7f8fa; color: #20242c; }
+    header { background: #ffffff; border-bottom: 1px solid #d9dee7; padding: 14px 22px; display: flex; align-items: center; gap: 16px; }
+    h1 { font-size: 20px; margin: 0; font-weight: 650; }
+    main { padding: 20px 22px; display: grid; gap: 18px; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); }
+    section { background: #ffffff; border: 1px solid #d9dee7; border-radius: 8px; padding: 16px; min-height: 260px; }
+    h2 { font-size: 15px; margin: 0 0 12px; }
+    label { font-size: 12px; color: #555f70; display: block; margin-bottom: 4px; }
+    input { height: 34px; border: 1px solid #b9c1ce; border-radius: 6px; padding: 0 10px; min-width: 220px; }
+    button { height: 36px; border: 1px solid #27364a; border-radius: 6px; background: #27364a; color: white; padding: 0 12px; cursor: pointer; }
+    table { width: 100%; border-collapse: collapse; font-size: 13px; }
+    th, td { text-align: left; padding: 8px; border-bottom: 1px solid #eef1f5; vertical-align: top; }
+    th { color: #5d6675; font-weight: 600; }
+    .toolbar { display: flex; gap: 10px; align-items: end; flex-wrap: wrap; }
+    .empty { color: #6b7280; font-size: 13px; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Agent Studio</h1>
+    <div class="toolbar">
+      <div><label for="tenant">Tenant</label><input id="tenant" value="tenant-a" /></div>
+      <button onclick="loadAll()">Refresh</button>
+    </div>
+  </header>
+  <main>
+    <section><h2>Agents</h2><div id="agents" class="empty">No data loaded.</div></section>
+    <section><h2>Drafts</h2><div id="drafts" class="empty">No data loaded.</div></section>
+  </main>
+  <script>
+    function headers() { return { 'X-Tenant-ID': document.getElementById('tenant').value }; }
+    function table(rows, columns) {
+      if (!rows.length) return '<p class="empty">Nothing found.</p>';
+      return '<table><thead><tr>' + columns.map(c => '<th>' + c.label + '</th>').join('') + '</tr></thead><tbody>' +
+        rows.map(row => '<tr>' + columns.map(c => '<td>' + (c.value(row) ?? '') + '</td>').join('') + '</tr>').join('') + '</tbody></table>';
+    }
+    async function loadAll() {
+      const [agentsResponse, draftsResponse] = await Promise.all([
+        fetch('/agents', { headers: headers() }),
+        fetch('/studio/agent-drafts', { headers: headers() })
+      ]);
+      const agents = agentsResponse.ok ? (await agentsResponse.json()).agents : [];
+      const drafts = draftsResponse.ok ? (await draftsResponse.json()).drafts : [];
+      document.getElementById('agents').innerHTML = table(agents, [
+        { label: 'Name', value: r => r.name },
+        { label: 'Owner', value: r => r.owner },
+        { label: 'Status', value: r => r.status },
+        { label: 'Risk', value: r => r.risk_class }
+      ]);
+      document.getElementById('drafts').innerHTML = table(drafts, [
+        { label: 'Name', value: r => r.name },
+        { label: 'Owner', value: r => r.owner },
+        { label: 'Status', value: r => r.status },
+        { label: 'Version', value: r => r.manifest?.version }
+      ]);
+    }
+    loadAll();
+  </script>
+</body>
+</html>
+        """
 
     @app.post("/agents", response_model=AgentResponse, status_code=status.HTTP_201_CREATED)
     def create_agent(

@@ -3,6 +3,12 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 from uuid import UUID, uuid4
 
+from observability.service import (
+    MetricsSnapshot,
+    ObservabilityService,
+    TraceNotFoundError,
+    TraceStatus,
+)
 from platform_common.domain.models import AgentRun, AgentRunStatus, PolicyDecision
 from platform_common.events.envelope import ActorType, EventEnvelope
 from services.aisecops.service import AISecOpsMonitoringService, AISecOpsSignal
@@ -93,6 +99,7 @@ class RuntimeExecutionService:
         responsible_ai_service: ResponsibleAIService | None = None,
         aisecops_service: AISecOpsMonitoringService | None = None,
         human_task_service: HumanTaskService | None = None,
+        observability_service: ObservabilityService | None = None,
     ) -> None:
         self.repository = repository or InMemoryAgentRunRepository()
         self.model_gateway = model_gateway or ModelGatewayService()
@@ -105,6 +112,7 @@ class RuntimeExecutionService:
         self.responsible_ai_service = responsible_ai_service or ResponsibleAIService()
         self.aisecops_service = aisecops_service or AISecOpsMonitoringService()
         self.human_task_service = human_task_service or HumanTaskService()
+        self.observability_service = observability_service or ObservabilityService()
 
     async def start_run(
         self,
@@ -125,8 +133,19 @@ class RuntimeExecutionService:
             status=AgentRunStatus.RUNNING,
         )
         self.repository.save_run(running_run)
+        self.observability_service.start_trace(
+            tenant_id=tenant_id,
+            trace_id=trace_id,
+            run_id=str(running_run.run_id),
+            agent_id=agent_id,
+        )
         self._write_audit_event("agent_run.started", running_run, {})
 
+        policy_span = self.observability_service.start_span(
+            trace_id=trace_id,
+            name="policy_evaluation",
+            attributes={"agent_id": agent_id},
+        )
         policy_decision = await self.policy_engine.evaluate(
             action="agent_run.start",
             subject={"type": "user", "id": user_id, "tenant_id": tenant_id},
@@ -137,6 +156,7 @@ class RuntimeExecutionService:
                 "input": input_payload,
             },
         )
+        self.observability_service.finish_span(policy_span.span_id)
         self._write_audit_event(
             "agent_run.policy_evaluated",
             running_run,
@@ -160,6 +180,7 @@ class RuntimeExecutionService:
                 }
             )
             self.repository.save_run(denied_run)
+            self.observability_service.finish_trace(tenant_id, trace_id, TraceStatus.FAILED)
             self._write_audit_event(
                 "agent_run.denied",
                 denied_run,
@@ -189,6 +210,7 @@ class RuntimeExecutionService:
                 }
             )
             self.repository.save_run(waiting_run)
+            self.observability_service.finish_trace(tenant_id, trace_id, TraceStatus.WAITING)
             self._write_audit_event(
                 "agent_run.waiting_for_human",
                 waiting_run,
@@ -216,7 +238,9 @@ class RuntimeExecutionService:
                     },
                 )
 
+            rag_span = self.observability_service.start_span(trace_id=trace_id, name="rag_retrieval")
             retrievals = await self.rag_platform.retrieve(str(input_payload), {"tenant_id": tenant_id})
+            self.observability_service.finish_span(rag_span.span_id)
             for retrieval in retrievals:
                 safety_findings = retrieval.get("safety_findings") or []
                 if safety_findings:
@@ -230,6 +254,7 @@ class RuntimeExecutionService:
                             trace_id=trace_id,
                         )
                     )
+            tool_span = self.observability_service.start_span(trace_id=trace_id, name="tool_invocation")
             tool_result = await self.tool_gateway.invoke(
                 "mvp.echo",
                 input_payload,
@@ -240,10 +265,13 @@ class RuntimeExecutionService:
                     "agent_id": agent_id,
                 },
             )
+            self.observability_service.finish_span(tool_span.span_id)
+            model_span = self.observability_service.start_span(trace_id=trace_id, name="model_invocation")
             model_result = await self.model_gateway.chat(
                 {"provider": "mock", "model": "mock-model"},
                 [{"role": "user", "content": str(input_payload)}],
             )
+            self.observability_service.finish_span(model_span.span_id)
             cost_event = self.finops_service.record_model_usage(
                 tenant_id=tenant_id,
                 agent_id=agent_id,
@@ -357,6 +385,7 @@ class RuntimeExecutionService:
                 }
             )
             saved_run = self.repository.save_run(completed_run)
+            self.observability_service.finish_trace(tenant_id, trace_id, TraceStatus.COMPLETED)
             self._write_audit_event("agent_run.completed", saved_run, {})
             return saved_run
         except ToolInvocationDeniedError as exc:
@@ -426,6 +455,26 @@ class RuntimeExecutionService:
         )
         return resumed_run
 
+    def metrics(self, tenant_id: str) -> MetricsSnapshot:
+        runs = self.list_runs(tenant_id)
+        audit_events = self.list_audit_events(tenant_id)
+        finops_summary = self.finops_service.summarize_tenant(tenant_id)
+        memory_count = len(self.list_memory_records(tenant_id))
+        open_traces, completed_traces = self.observability_service.trace_counts(tenant_id)
+        return MetricsSnapshot(
+            tenant_id=tenant_id,
+            total_runs=len(runs),
+            completed_runs=sum(run.status.value == "completed" for run in runs),
+            failed_runs=sum(run.status.value == "failed" for run in runs),
+            waiting_runs=sum(run.status.value == "waiting_for_human" for run in runs),
+            policy_denials=sum(event.event_type == "agent_run.denied" for event in audit_events),
+            total_cost=finops_summary.total_cost,
+            total_tokens=finops_summary.total_tokens,
+            memory_records=memory_count,
+            open_traces=open_traces,
+            completed_traces=completed_traces,
+        )
+
     def get_run(self, tenant_id: str, run_id: UUID | str) -> AgentRun:
         run_uuid = self._parse_uuid(run_id)
         run = self.repository.get_run(tenant_id, run_uuid)
@@ -464,6 +513,14 @@ class RuntimeExecutionService:
             }
         )
         self.repository.save_run(failed_run)
+        try:
+            self.observability_service.finish_trace(
+                failed_run.tenant_id,
+                failed_run.trace_id,
+                TraceStatus.FAILED,
+            )
+        except TraceNotFoundError:
+            pass
         self._write_audit_event(
             "agent_run.failed",
             failed_run,

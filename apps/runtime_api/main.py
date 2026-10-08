@@ -91,6 +91,11 @@ def create_app(runtime: RuntimeExecutionService | None = None) -> FastAPI:
         runtime_service = _runtime_from_request(request)
         return AgentRunListResponse(runs=runtime_service.list_runs(tenant_id))
 
+    @app.get("/metrics")
+    def get_metrics(request: Request, tenant_id: TenantIdHeader) -> dict:
+        runtime_service = _runtime_from_request(request)
+        return runtime_service.metrics(tenant_id).model_dump(mode="json")
+
     @app.get("/agent-runs/{run_id}", response_model=AgentRunResponse)
     def get_run(request: Request, run_id: UUID, tenant_id: TenantIdHeader) -> AgentRunResponse:
         runtime_service = _runtime_from_request(request)

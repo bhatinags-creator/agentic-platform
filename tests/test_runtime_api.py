@@ -132,3 +132,29 @@ def test_start_agent_run_rejects_unknown_request_fields() -> None:
     )
 
     assert response.status_code == 422
+
+
+
+def test_runtime_metrics_endpoint_returns_tenant_snapshot() -> None:
+    client = build_client()
+    headers = {"X-Tenant-ID": "tenant-a"}
+    client.post(
+        "/agent-runs",
+        headers=headers,
+        json={
+            "user_id": "user-1",
+            "agent_id": "agent.customer-support",
+            "agent_version": "1.0.0",
+            "input": {"message": "hello"},
+        },
+    )
+
+    response = client.get("/metrics", headers=headers)
+
+    assert response.status_code == 200
+    metrics = response.json()
+    assert metrics["tenant_id"] == "tenant-a"
+    assert metrics["total_runs"] == 1
+    assert metrics["completed_runs"] == 1
+    assert metrics["total_tokens"] > 0
+    assert metrics["completed_traces"] == 1

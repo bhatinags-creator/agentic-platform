@@ -1070,3 +1070,43 @@ Key classes:
 Runtime integration:
 
 `RuntimeExecutionService` now creates approval tasks and returns `WAITING_FOR_HUMAN` runs when runtime input asks for human approval. The `resume_after_human_approval(...)` method records the decision and marks the run completed or failed.
+
+## Observability
+
+File:
+
+- `observability/service.py`
+
+Key classes:
+
+- `TraceStatus`: running, completed, failed, waiting.
+- `SpanStatus`: running, completed, failed.
+- `TraceRecord`: tenant trace with run, agent, status, timing, and metadata.
+- `SpanRecord`: timed operation inside a trace.
+- `MetricsSnapshot`: tenant metrics returned by runtime.
+- `ObservabilityService`: starts/finishes traces and spans, lists trace data, and counts traces.
+
+Runtime integration:
+
+`RuntimeExecutionService` now records traces and spans for policy, RAG, tool, and model work, and exposes a `metrics(...)` method used by `GET /metrics`.
+
+## SDK and CLI
+
+Files:
+
+- `sdk/python/agentic_platform_client/client.py`
+- `sdk/python/agentic_platform_client/cli.py`
+
+The SDK wraps Control Plane, Agent Studio, Runtime, and Metrics APIs with tenant-aware headers. The CLI exposes common local operations through the `agentic-platform` console command.
+
+## Local Agent Studio UI
+
+File:
+
+- `apps/control_plane_api/main.py`
+
+Endpoint:
+
+- `GET /studio`
+
+The page lists tenant agents and Agent Studio drafts using the existing API endpoints.

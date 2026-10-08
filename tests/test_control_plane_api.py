@@ -116,3 +116,14 @@ def test_deprecate_agent() -> None:
 
     assert deprecate_response.status_code == 200
     assert deprecate_response.json()["agent"]["status"] == "deprecated"
+
+
+
+def test_local_agent_studio_page_loads() -> None:
+    client = build_client()
+
+    response = client.get("/studio")
+
+    assert response.status_code == 200
+    assert "Agent Studio" in response.text
+    assert "loadAll" in response.text

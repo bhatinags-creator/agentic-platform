@@ -4,12 +4,12 @@ Last updated: 2026-10-06
 
 ## Current Status
 
-We have completed Steps 01 to 35.
+We have completed Steps 01 to 40.
 
 Current platform stage:
 
 ```text
-Foundation + Control Plane MVP + Runtime Plane MVP + Governance Hooks + Persistent Runtime Stores + Agent Studio Foundations + Evaluation + Responsible AI + AISecOps + Tool Governance + MCP + RAG Platform + Deployment + Human Approval
+Foundation + Control Plane MVP + Runtime Plane MVP + Governance Hooks + Persistent Runtime Stores + Agent Studio Foundations + Evaluation + Responsible AI + AISecOps + Tool Governance + MCP + RAG Platform + Deployment + Human Approval + Observability + SDK + CLI + Local Studio UI
 ```
 
 The platform can currently:
@@ -42,6 +42,10 @@ The platform can currently:
 - evaluate deployment gates and roll back deployments
 - bootstrap local APIs with PowerShell scripts
 - create human approval tasks and pause/resume runtime runs
+- record runtime traces and spans
+- expose tenant runtime metrics
+- use the expanded Python SDK and CLI
+- open a minimal local Agent Studio UI
 
 Current verification baseline:
 
@@ -493,13 +497,13 @@ Purpose: Pause runs when policy requires human approval.
 
 ### Step 36 - Trace and Span Model
 
-Status: Next
+Status: Done
 
 Purpose: Standardize traces across runtime calls.
 
 ### Step 37 - Metrics API
 
-Status: Planned
+Status: Done
 
 Purpose: Expose operational metrics.
 
@@ -507,13 +511,13 @@ Purpose: Expose operational metrics.
 
 ### Step 38 - Python SDK Expansion
 
-Status: Planned
+Status: Done
 
 Purpose: Make the platform easy to use from Python code.
 
 ### Step 39 - CLI Tool
 
-Status: Planned
+Status: Done
 
 Purpose: Manage the platform from terminal.
 
@@ -521,13 +525,13 @@ Purpose: Manage the platform from terminal.
 
 ### Step 40 - Minimal Local Agent Studio UI
 
-Status: Planned
+Status: Done
 
 Purpose: Provide a browser UI for local usage.
 
 ### Step 41 - Evaluation Workspace UI
 
-Status: Planned
+Status: Next
 
 Purpose: View and run evaluations.
 
@@ -579,16 +583,14 @@ Purpose: Harden platform security posture.
 
 Recommended immediate sequence from our current point:
 
-1. Step 36 - Trace and Span Model
-2. Step 37 - Metrics API
-3. Step 38 - Python SDK Expansion
-4. Step 39 - CLI Tool
-5. Step 40 - Minimal Local Agent Studio UI
-6. Step 41 - Evaluation Workspace UI
-7. Step 42 - Deployment Console UI
-8. Step 43 - Authentication and Authorization
-9. Step 44 - Postgres Migration
-10. Step 45 - Event Bus Integration
+1. Step 41 - Evaluation Workspace UI
+2. Step 42 - Deployment Console UI
+3. Step 43 - Authentication and Authorization
+4. Step 44 - Postgres Migration
+5. Step 45 - Event Bus Integration
+6. Step 46 - Background Workers
+7. Step 47 - Containerization and Kubernetes
+8. Step 48 - Security Hardening
 
 ## Progress Summary
 
@@ -629,10 +631,15 @@ Completed:
 - Step 33 - Local Laptop Deployment Scripts
 - Step 34 - Human Task Service MVP
 - Step 35 - Runtime Human Approval Checkpoints
+- Step 36 - Trace and Span Model
+- Step 37 - Metrics API
+- Step 38 - Python SDK Expansion
+- Step 39 - CLI Tool
+- Step 40 - Minimal Local Agent Studio UI
 
 Next:
 
-- Step 36 - Trace and Span Model
+- Step 41 - Evaluation Workspace UI
 
 Total roadmap steps listed:
 
@@ -643,16 +650,17 @@ Total roadmap steps listed:
 Completed:
 
 ```text
-35 / 48
+40 / 48
 ```
 
 Approximate completion:
 
 ```text
-72.9%
+83.3%
 ```
 
 Note: the percentage is based on planned development steps, not calendar effort. Some later steps are larger than early ones.
+
 
 
 
