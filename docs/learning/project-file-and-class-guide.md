@@ -15,6 +15,9 @@ This guide is the running map of the Agentic Platform codebase. Use it when you 
 - Steps 09-12: Persistent runtime, audit, FinOps, and memory stores.
 - Step 13: Agent Studio backend API.
 - Steps 14-22: Prompt management, Agent Studio test harness, evaluation architecture, Responsible AI, and runtime Responsible AI hooks.
+- Steps 23-30: AISecOps, tool governance, MCP, and RAG platform.
+- Steps 31-40: Deployment, human approvals, observability, SDK, CLI, and local Studio UI.
+- Steps 41-48: Evaluation UI, deployment UI, auth, Postgres migration planning, event bus, workers, Kubernetes, and security hardening.
 
 ## Root Files
 
@@ -1110,3 +1113,113 @@ Endpoint:
 - `GET /studio`
 
 The page lists tenant agents and Agent Studio drafts using the existing API endpoints.
+
+
+## Final UI and Production Hardening
+
+Learning doc: `docs/learning/steps-41-48-ui-production-hardening.md`
+
+### Evaluation Workspace UI
+
+File: `apps/control_plane_api/main.py`
+
+Endpoint: `GET /studio/evaluations`
+
+The endpoint returns the local Evaluation Workspace page. It is currently static HTML that teaches the operator workflow for evaluation suites, offline checks, safety checks, and future run controls.
+
+### Deployment Console UI
+
+File: `apps/control_plane_api/main.py`
+
+Endpoint: `GET /studio/deployments`
+
+The endpoint returns the local Deployment Console page. It shows the deployment gate concept: policy, evaluation, Responsible AI, and AISecOps evidence must be considered before promotion.
+
+### Authentication Service
+
+File: `services/auth_service/service.py`
+
+Classes:
+
+- `Role`: enum for admin, developer, and viewer.
+- `AuthenticatedPrincipal`: dataclass representing the authenticated caller, tenant, and role set.
+- `AuthenticationError`: exception for missing or invalid credentials.
+- `AuthorizationError`: exception for missing permissions.
+- `APIKeyAuthService`: authenticates API keys and checks roles.
+
+Methods:
+
+- `authenticate(api_key)`: returns an `AuthenticatedPrincipal` for a known key. Raises `AuthenticationError` for missing or unknown keys.
+- `require_role(principal, required_role)`: allows the required role or admin override. Raises `AuthorizationError` otherwise.
+
+API helper:
+
+- `_configure_optional_api_key_auth(app)`: installed in both APIs. If `AGENTIC_PLATFORM_API_KEY` is set, non-health API routes require matching `X-API-Key`.
+
+### Database Migration Settings
+
+File: `infrastructure/database/settings.py`
+
+Classes:
+
+- `DatabaseEngine`: enum for SQLite and Postgres.
+- `DatabaseSettings`: dataclass for engine, URL, and pool size.
+- `PostgresMigrationPlan`: stores the staged migration checklist.
+
+Methods:
+
+- `DatabaseSettings.from_url(url)`: detects Postgres URLs and otherwise treats the URL as SQLite/local.
+- `PostgresMigrationPlan.describe()`: returns a copy of the migration step list.
+
+### Event Bus
+
+File: `platform_common/events/bus.py`
+
+Classes:
+
+- `PublishedEvent`: dataclass for event id, topic, payload, and timestamp.
+- `EventPublisher`: protocol future event publishers should implement.
+- `InMemoryEventBus`: local event bus used for tests and learning.
+
+Methods:
+
+- `publish(topic, payload)`: creates and stores a `PublishedEvent`.
+- `list_events(topic=None)`: returns all events or only events for a topic.
+
+### Background Worker Service
+
+File: `services/background_worker/service.py`
+
+Classes:
+
+- `WorkerJobStatus`: queued, completed, failed.
+- `WorkerJob`: dataclass for one queued background job.
+- `BackgroundWorkerService`: in-memory background job queue.
+
+Methods:
+
+- `enqueue(job_type, payload)`: creates a queued job.
+- `run_next()`: completes the oldest queued job and returns it, or returns `None` when no job is queued.
+- `list_jobs(status=None)`: lists jobs, optionally filtered by status.
+
+### Security Hardening Service
+
+File: `services/security_hardening/service.py`
+
+Classes:
+
+- `SecurityFinding`: dataclass for one hardening control result.
+- `SecurityHardeningService`: executes lightweight security checks.
+
+Methods:
+
+- `review_runtime_headers(headers)`: checks tenant identity and auth header presence.
+
+### Kubernetes Manifests
+
+Files:
+
+- `infrastructure/kubernetes/control-plane-api.yaml`
+- `infrastructure/kubernetes/runtime-api.yaml`
+
+The manifests define Deployments and Services with readiness probes, liveness probes, resource requests and limits, optional API key secret references, and restricted container security contexts.

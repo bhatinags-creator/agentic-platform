@@ -158,3 +158,17 @@ def test_runtime_metrics_endpoint_returns_tenant_snapshot() -> None:
     assert metrics["completed_runs"] == 1
     assert metrics["total_tokens"] > 0
     assert metrics["completed_traces"] == 1
+
+
+def test_optional_api_key_auth_protects_runtime_api(monkeypatch) -> None:
+    monkeypatch.setenv("AGENTIC_PLATFORM_API_KEY", "secret")
+    client = TestClient(create_app(runtime=RuntimeExecutionService()))
+
+    missing_key_response = client.get("/metrics", headers={"X-Tenant-ID": "tenant-a"})
+    valid_key_response = client.get(
+        "/metrics",
+        headers={"X-Tenant-ID": "tenant-a", "X-API-Key": "secret"},
+    )
+
+    assert missing_key_response.status_code == 401
+    assert valid_key_response.status_code == 200

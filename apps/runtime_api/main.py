@@ -6,6 +6,7 @@ from typing import Annotated
 from uuid import UUID
 
 from fastapi import FastAPI, Header, HTTPException, Request, status
+from fastapi.responses import JSONResponse
 
 from apps.runtime_api.schemas import AgentRunListResponse, AgentRunResponse, StartRunRequest
 from services.audit_service.service import AuditService, SQLiteAuditRepository
@@ -39,6 +40,7 @@ def build_default_runtime() -> RuntimeExecutionService:
 def create_app(runtime: RuntimeExecutionService | None = None) -> FastAPI:
     app = FastAPI(title="Agentic Platform Runtime API", version="0.1.0")
     app.state.runtime = runtime or build_default_runtime()
+    _configure_optional_api_key_auth(app)
 
     @app.get("/health")
     def health() -> dict[str, str]:
@@ -109,6 +111,21 @@ def create_app(runtime: RuntimeExecutionService | None = None) -> FastAPI:
 
 def _runtime_from_request(request: Request) -> RuntimeExecutionService:
     return request.app.state.runtime
+
+
+
+def _configure_optional_api_key_auth(app: FastAPI) -> None:
+    api_key = os.getenv("AGENTIC_PLATFORM_API_KEY")
+    if not api_key:
+        return
+
+    @app.middleware("http")
+    async def api_key_middleware(request: Request, call_next):
+        if request.url.path in {"/health", "/studio", "/studio/evaluations", "/studio/deployments"}:
+            return await call_next(request)
+        if request.headers.get("X-API-Key") != api_key:
+            return JSONResponse(status_code=401, content={"detail": "Invalid or missing API key"})
+        return await call_next(request)
 
 
 app = create_app()

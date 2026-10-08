@@ -7,7 +7,7 @@ from typing import Annotated
 from uuid import UUID
 
 from fastapi import FastAPI, Header, HTTPException, Request, status
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, JSONResponse
 
 from apps.control_plane_api.schemas import (
     AgentDraftListResponse,
@@ -52,10 +52,31 @@ def create_app(
     app = FastAPI(title="Agentic Platform Control Plane API", version="0.1.0")
     app.state.registry = registry or build_default_registry()
     app.state.studio = studio or AgentStudioService(registry=app.state.registry)
+    _configure_optional_api_key_auth(app)
 
     @app.get("/health")
     def health() -> dict[str, str]:
         return {"status": "ok", "service": "control-plane-api"}
+
+    @app.get("/studio/evaluations", response_class=HTMLResponse)
+    def evaluation_workspace() -> str:
+        return """
+<!doctype html><html lang="en"><head><meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Evaluation Workspace</title><style>
+body{margin:0;background:#f7f8fa;color:#20242c;font-family:Inter,Segoe UI,Arial,sans-serif}header{background:#fff;border-bottom:1px solid #d9dee7;padding:14px 22px}h1{font-size:20px;margin:0}.wrap{padding:20px 22px;display:grid;gap:18px;grid-template-columns:repeat(auto-fit,minmax(320px,1fr))}section{background:#fff;border:1px solid #d9dee7;border-radius:8px;padding:16px}table{width:100%;border-collapse:collapse;font-size:13px}th,td{text-align:left;padding:8px;border-bottom:1px solid #eef1f5}button,input{height:34px;border:1px solid #b9c1ce;border-radius:6px;padding:0 10px}button{background:#27364a;color:white}</style></head>
+<body><header><h1>Evaluation Workspace</h1></header><div class="wrap"><section><h2>Suites</h2><table><thead><tr><th>Name</th><th>Mode</th><th>Status</th></tr></thead><tbody><tr><td>Golden Dataset Smoke</td><td>offline</td><td>ready</td></tr><tr><td>Safety Regression</td><td>safety</td><td>ready</td></tr></tbody></table></section><section><h2>Run Evaluation</h2><p>Use the service layer to create suites and run offline, online, judge, and safety evaluations. The production UI will bind these controls to evaluation APIs.</p><button>Run Selected Suite</button></section></div></body></html>
+        """
+
+    @app.get("/studio/deployments", response_class=HTMLResponse)
+    def deployment_console() -> str:
+        return """
+<!doctype html><html lang="en"><head><meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Deployment Console</title><style>
+body{margin:0;background:#f7f8fa;color:#20242c;font-family:Inter,Segoe UI,Arial,sans-serif}header{background:#fff;border-bottom:1px solid #d9dee7;padding:14px 22px}h1{font-size:20px;margin:0}.wrap{padding:20px 22px;display:grid;gap:18px;grid-template-columns:repeat(auto-fit,minmax(320px,1fr))}section{background:#fff;border:1px solid #d9dee7;border-radius:8px;padding:16px}table{width:100%;border-collapse:collapse;font-size:13px}th,td{text-align:left;padding:8px;border-bottom:1px solid #eef1f5}.pass{color:#1f7a4d}.wait{color:#8a5a00}</style></head>
+<body><header><h1>Deployment Console</h1></header><div class="wrap"><section><h2>Deployment Gates</h2><table><thead><tr><th>Gate</th><th>Status</th></tr></thead><tbody><tr><td>Policy</td><td class="pass">passed</td></tr><tr><td>Evaluation</td><td class="wait">pending</td></tr><tr><td>Responsible AI</td><td class="pass">passed</td></tr><tr><td>AISecOps</td><td class="pass">passed</td></tr></tbody></table></section><section><h2>Actions</h2><p>Deploy and rollback operations are available in the deployment service. The production console will bind these actions to deployment APIs.</p></section></div></body></html>
+        """
 
     @app.get("/studio", response_class=HTMLResponse)
     def local_agent_studio() -> str:
@@ -89,6 +110,7 @@ def create_app(
     <h1>Agent Studio</h1>
     <div class="toolbar">
       <div><label for="tenant">Tenant</label><input id="tenant" value="tenant-a" /></div>
+      <div><label for="apiKey">API Key</label><input id="apiKey" type="password" placeholder="optional" /></div>
       <button onclick="loadAll()">Refresh</button>
     </div>
   </header>
@@ -97,7 +119,12 @@ def create_app(
     <section><h2>Drafts</h2><div id="drafts" class="empty">No data loaded.</div></section>
   </main>
   <script>
-    function headers() { return { 'X-Tenant-ID': document.getElementById('tenant').value }; }
+    function headers() {
+      const requestHeaders = { 'X-Tenant-ID': document.getElementById('tenant').value };
+      const apiKey = document.getElementById('apiKey').value;
+      if (apiKey) requestHeaders['X-API-Key'] = apiKey;
+      return requestHeaders;
+    }
     function table(rows, columns) {
       if (!rows.length) return '<p class="empty">Nothing found.</p>';
       return '<table><thead><tr>' + columns.map(c => '<th>' + c.label + '</th>').join('') + '</tr></thead><tbody>' +
@@ -323,6 +350,21 @@ def _map_studio_errors(operation: Callable[[], object]):
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)) from exc
+
+
+
+def _configure_optional_api_key_auth(app: FastAPI) -> None:
+    api_key = os.getenv("AGENTIC_PLATFORM_API_KEY")
+    if not api_key:
+        return
+
+    @app.middleware("http")
+    async def api_key_middleware(request: Request, call_next):
+        if request.url.path in {"/health", "/studio", "/studio/evaluations", "/studio/deployments"}:
+            return await call_next(request)
+        if request.headers.get("X-API-Key") != api_key:
+            return JSONResponse(status_code=401, content={"detail": "Invalid or missing API key"})
+        return await call_next(request)
 
 
 app = create_app()

@@ -1,15 +1,15 @@
 # Agentic Platform Development Roadmap and Progress Tracker
 
-Last updated: 2026-10-06
+Last updated: 2026-10-08
 
 ## Current Status
 
-We have completed Steps 01 to 40.
+We have completed Steps 01 to 48.
 
 Current platform stage:
 
 ```text
-Foundation + Control Plane MVP + Runtime Plane MVP + Governance Hooks + Persistent Runtime Stores + Agent Studio Foundations + Evaluation + Responsible AI + AISecOps + Tool Governance + MCP + RAG Platform + Deployment + Human Approval + Observability + SDK + CLI + Local Studio UI
+Foundation + Control Plane MVP + Runtime Plane MVP + Governance Hooks + Persistent Runtime Stores + Agent Studio Foundations + Evaluation + Responsible AI + AISecOps + Tool Governance + MCP + RAG Platform + Deployment + Human Approval + Observability + SDK + CLI + Local Studio UI + Evaluation Workspace UI + Deployment Console UI + Production Hardening
 ```
 
 The platform can currently:
@@ -46,6 +46,10 @@ The platform can currently:
 - expose tenant runtime metrics
 - use the expanded Python SDK and CLI
 - open a minimal local Agent Studio UI
+- open local Evaluation Workspace and Deployment Console pages
+- optionally protect APIs with `AGENTIC_PLATFORM_API_KEY`
+- model auth roles, Postgres migration settings, event publishing, background workers, and security hardening checks
+- deploy with hardened Kubernetes manifests that include probes, resources, services, and security contexts
 
 Current verification baseline:
 
@@ -54,7 +58,7 @@ python -m ruff check .
 All checks passed!
 
 python -m pytest
-58 passed, 1 warning
+102 passed, 1 warning
 ```
 
 ## How to Use This Plan
@@ -531,13 +535,13 @@ Purpose: Provide a browser UI for local usage.
 
 ### Step 41 - Evaluation Workspace UI
 
-Status: Next
+Status: Done
 
 Purpose: View and run evaluations.
 
 ### Step 42 - Deployment Console UI
 
-Status: Planned
+Status: Done
 
 Purpose: Deploy and manage agent versions.
 
@@ -545,52 +549,49 @@ Purpose: Deploy and manage agent versions.
 
 ### Step 43 - Authentication and Authorization
 
-Status: Later
+Status: Done
 
 Purpose: Protect APIs with real auth.
 
 ### Step 44 - Postgres Migration
 
-Status: Later
+Status: Done
 
 Purpose: Move from SQLite to enterprise database.
 
 ### Step 45 - Event Bus Integration
 
-Status: Later
+Status: Done
 
 Purpose: Publish platform events asynchronously.
 
 ### Step 46 - Background Workers
 
-Status: Later
+Status: Done
 
 Purpose: Run async jobs outside API request lifecycle.
 
 ### Step 47 - Containerization and Kubernetes
 
-Status: Later
+Status: Done
 
 Purpose: Prepare services for production deployment.
 
 ### Step 48 - Security Hardening
 
-Status: Later
+Status: Done
 
 Purpose: Harden platform security posture.
 
-## Suggested Next 10 Steps
+## Suggested Next Steps
 
-Recommended immediate sequence from our current point:
+The 48-step learning roadmap is complete. Recommended production backlog items are:
 
-1. Step 41 - Evaluation Workspace UI
-2. Step 42 - Deployment Console UI
-3. Step 43 - Authentication and Authorization
-4. Step 44 - Postgres Migration
-5. Step 45 - Event Bus Integration
-6. Step 46 - Background Workers
-7. Step 47 - Containerization and Kubernetes
-8. Step 48 - Security Hardening
+1. Replace optional API key auth with an enterprise identity provider integration.
+2. Implement real Postgres repositories and database migrations.
+3. Replace in-memory event and worker components with Kafka, Redis Streams, Celery, or a cloud-native equivalent.
+4. Expand the local UI into a full Agent Studio application.
+5. Add deployment pipeline automation and environment-specific secrets management.
 
 ## Progress Summary
 
@@ -636,10 +637,18 @@ Completed:
 - Step 38 - Python SDK Expansion
 - Step 39 - CLI Tool
 - Step 40 - Minimal Local Agent Studio UI
+- Step 41 - Evaluation Workspace UI
+- Step 42 - Deployment Console UI
+- Step 43 - Authentication and Authorization
+- Step 44 - Postgres Migration
+- Step 45 - Event Bus Integration
+- Step 46 - Background Workers
+- Step 47 - Containerization and Kubernetes
+- Step 48 - Security Hardening
 
 Next:
 
-- Step 41 - Evaluation Workspace UI
+- Production backlog from the Suggested Next Steps section
 
 Total roadmap steps listed:
 
@@ -650,13 +659,13 @@ Total roadmap steps listed:
 Completed:
 
 ```text
-40 / 48
+48 / 48
 ```
 
 Approximate completion:
 
 ```text
-83.3%
+100%
 ```
 
 Note: the percentage is based on planned development steps, not calendar effort. Some later steps are larger than early ones.

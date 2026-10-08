@@ -10,9 +10,58 @@ spec:
     metadata:
       labels: { app: runtime-api }
     spec:
+      securityContext:
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
       containers:
         - name: runtime-api
           image: agentic-platform:local
+          imagePullPolicy: IfNotPresent
           command: ["uvicorn", "apps.runtime_api.main:app", "--host", "0.0.0.0", "--port", "8002"]
+          env:
+            - name: AGENTIC_PLATFORM_RUNTIME_DB_PATH
+              value: /app/data/agentic_platform_runtime.db
+            - name: AGENTIC_PLATFORM_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: agentic-platform-api-key
+                  key: api-key
+                  optional: true
           ports:
             - containerPort: 8002
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8002
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8002
+            initialDelaySeconds: 15
+            periodSeconds: 20
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: runtime-api
+spec:
+  selector:
+    app: runtime-api
+  ports:
+    - name: http
+      port: 8002
+      targetPort: 8002

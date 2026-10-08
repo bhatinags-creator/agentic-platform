@@ -10,9 +10,58 @@ spec:
     metadata:
       labels: { app: control-plane-api }
     spec:
+      securityContext:
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
       containers:
         - name: control-plane-api
           image: agentic-platform:local
+          imagePullPolicy: IfNotPresent
           command: ["uvicorn", "apps.control_plane_api.main:app", "--host", "0.0.0.0", "--port", "8001"]
+          env:
+            - name: AGENTIC_PLATFORM_DB_PATH
+              value: /app/data/agentic_platform.db
+            - name: AGENTIC_PLATFORM_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: agentic-platform-api-key
+                  key: api-key
+                  optional: true
           ports:
             - containerPort: 8001
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8001
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8001
+            initialDelaySeconds: 15
+            periodSeconds: 20
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: control-plane-api
+spec:
+  selector:
+    app: control-plane-api
+  ports:
+    - name: http
+      port: 8001
+      targetPort: 8001

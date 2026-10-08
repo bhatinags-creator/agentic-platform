@@ -127,3 +127,29 @@ def test_local_agent_studio_page_loads() -> None:
     assert response.status_code == 200
     assert "Agent Studio" in response.text
     assert "loadAll" in response.text
+
+
+def test_evaluation_workspace_and_deployment_console_pages_load() -> None:
+    client = build_client()
+
+    evaluation_response = client.get("/studio/evaluations")
+    deployment_response = client.get("/studio/deployments")
+
+    assert evaluation_response.status_code == 200
+    assert "Evaluation Workspace" in evaluation_response.text
+    assert deployment_response.status_code == 200
+    assert "Deployment Console" in deployment_response.text
+
+
+def test_optional_api_key_auth_protects_control_plane_api(monkeypatch) -> None:
+    monkeypatch.setenv("AGENTIC_PLATFORM_API_KEY", "secret")
+    client = TestClient(create_app(registry=AgentRegistryService()))
+
+    missing_key_response = client.get("/agents", headers={"X-Tenant-ID": "tenant-a"})
+    valid_key_response = client.get(
+        "/agents",
+        headers={"X-Tenant-ID": "tenant-a", "X-API-Key": "secret"},
+    )
+
+    assert missing_key_response.status_code == 401
+    assert valid_key_response.status_code == 200
