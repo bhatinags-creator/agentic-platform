@@ -92,8 +92,16 @@ body{margin:0;background:#f7f8fa;color:#20242c;font-family:Inter,Segoe UI,Arial,
     body { margin: 0; background: #f7f8fa; color: #20242c; }
     header { background: #ffffff; border-bottom: 1px solid #d9dee7; padding: 14px 22px; display: flex; align-items: center; gap: 16px; }
     h1 { font-size: 20px; margin: 0; font-weight: 650; }
+    nav { margin-left: auto; display: flex; gap: 8px; flex-wrap: wrap; }
+    nav a { color: #27364a; text-decoration: none; border: 1px solid #c8d0dc; border-radius: 6px; padding: 8px 10px; font-size: 13px; background: #ffffff; }
     main { padding: 20px 22px; display: grid; gap: 18px; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); }
-    section { background: #ffffff; border: 1px solid #d9dee7; border-radius: 8px; padding: 16px; min-height: 260px; }
+    section { background: #ffffff; border: 1px solid #d9dee7; border-radius: 8px; padding: 16px; min-height: 220px; }
+    .wide { grid-column: 1 / -1; min-height: 0; }
+    .tiles { display: grid; gap: 12px; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); }
+    .tile { border: 1px solid #d9dee7; border-radius: 8px; padding: 14px; background: #fbfcfe; }
+    .tile h3 { margin: 0 0 8px; font-size: 14px; }
+    .tile p { margin: 0 0 12px; color: #5b6472; font-size: 13px; line-height: 1.4; }
+    .tile a { display: inline-block; color: #ffffff; background: #27364a; border-radius: 6px; padding: 8px 10px; font-size: 13px; text-decoration: none; }
     h2 { font-size: 15px; margin: 0 0 12px; }
     label { font-size: 12px; color: #555f70; display: block; margin-bottom: 4px; }
     input { height: 34px; border: 1px solid #b9c1ce; border-radius: 6px; padding: 0 10px; min-width: 220px; }
@@ -108,6 +116,11 @@ body{margin:0;background:#f7f8fa;color:#20242c;font-family:Inter,Segoe UI,Arial,
 <body>
   <header>
     <h1>Agent Studio</h1>
+    <nav>
+      <a href="/studio">Studio Home</a>
+      <a href="/studio/evaluations">Evaluation Workspace</a>
+      <a href="/studio/deployments">Deployment Console</a>
+    </nav>
     <div class="toolbar">
       <div><label for="tenant">Tenant</label><input id="tenant" value="tenant-a" /></div>
       <div><label for="apiKey">API Key</label><input id="apiKey" type="password" placeholder="optional" /></div>
@@ -115,6 +128,14 @@ body{margin:0;background:#f7f8fa;color:#20242c;font-family:Inter,Segoe UI,Arial,
     </div>
   </header>
   <main>
+    <section class="wide">
+      <h2>Step 41-48 Production Surfaces</h2>
+      <div class="tiles">
+        <div class="tile"><h3>Evaluation Workspace</h3><p>Run offline, online, judge, and safety evaluation workflows from the new evaluation surface.</p><a href="/studio/evaluations">Open evaluations</a></div>
+        <div class="tile"><h3>Deployment Console</h3><p>Inspect deployment gates for policy, evaluation, Responsible AI, and AISecOps readiness.</p><a href="/studio/deployments">Open deployments</a></div>
+        <div class="tile"><h3>Production Hardening</h3><p>Steps 43-48 added optional API key auth, Postgres planning, events, workers, Kubernetes hardening, and security checks.</p><a href="/docs">Open API docs</a></div>
+      </div>
+    </section>
     <section><h2>Agents</h2><div id="agents" class="empty">No data loaded.</div></section>
     <section><h2>Drafts</h2><div id="drafts" class="empty">No data loaded.</div></section>
   </main>
