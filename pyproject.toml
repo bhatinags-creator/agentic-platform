@@ -35,7 +35,7 @@ agentic-platform = "sdk.python.agentic_platform_client.cli:main"
 
 [project.optional-dependencies]
 dev = ["pytest>=8.0.0", "ruff>=0.6.0"]
-runtime = ["langgraph>=0.2.0", "langchain>=0.2.0"]
+runtime = ["langgraph>=0.2.0", "langchain>=0.2.0", "langchain-openai>=0.1.0"]
 data = ["sqlalchemy>=2.0.0", "asyncpg>=0.29.0", "redis>=5.0.0"]
 events = ["aiokafka>=0.10.0"]
 

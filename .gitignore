@@ -8,6 +8,8 @@ __pycache__/
 !.env.example
 build/
 dist/
+node_modules/
+*.tsbuildinfo
 *.egg-info/
 data/*
 !data/.gitkeep

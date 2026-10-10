@@ -13,14 +13,33 @@ from apps.control_plane_api.schemas import (
     AgentDraftListResponse,
     AgentDraftResponse,
     AgentDraftValidationResponse,
+    AgentInteractionListResponse,
+    AgentInteractionResponse,
     AgentListResponse,
     AgentResponse,
+    AgentTestRunResponse,
     AgentVersionListResponse,
     AgentVersionResponse,
     CreateAgentDraftRequest,
     CreateAgentRequest,
+    CreatePromptTemplateRequest,
+    CreateRuleRequest,
+    CreateToolRequest,
+    InvokeAgentDraftRequest,
+    ModelProfileListResponse,
+    ModelProfileResponse,
+    PromptTemplateListResponse,
+    PromptTemplateVersionResponse,
     PublishAgentVersionRequest,
+    RuleListResponse,
+    RunAgentDraftTestsRequest,
+    SaveModelProfileRequest,
+    SaveWorkflowRequest,
+    TestToolRequest,
+    TestToolResponse,
+    ToolListResponse,
     UpdateAgentDraftRequest,
+    WorkflowListResponse,
 )
 from apps.control_plane_api.studio_ui import render_agent_studio
 from services.agent_registry.service import (
@@ -35,6 +54,22 @@ from services.agent_studio.service import (
     AgentDraftNotFoundError,
     AgentStudioService,
 )
+from services.agent_studio.sqlite_repository import (
+    SQLiteAgentDraftRepository,
+    SQLiteAgentInteractionRepository,
+)
+from services.model_config.service import ModelConfigService
+from services.prompt_management.service import PromptManagementService, SQLitePromptRepository
+from services.runtime_execution.service import RuntimeExecutionFailedError, RuntimeExecutionService
+from services.studio_assets.service import SQLiteStudioAssetRepository, StudioAssetService
+from services.tool_gateway.service import (
+    SQLiteToolRepository,
+    ToolGatewayService,
+    ToolInvocationDeniedError,
+    ToolInvocationExecutionError,
+    ToolNotFoundError,
+    ToolRegistryService,
+)
 
 TenantIdHeader = Annotated[str, Header(alias="X-Tenant-ID")]
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
@@ -46,13 +81,62 @@ def build_default_registry() -> AgentRegistryService:
     return AgentRegistryService(repository=SQLiteAgentRegistryRepository(database_path))
 
 
+def build_default_studio(
+    registry: AgentRegistryService,
+    tool_registry: ToolRegistryService,
+    model_config: ModelConfigService,
+) -> AgentStudioService:
+    database_path = Path(os.getenv("AGENTIC_PLATFORM_DB_PATH", str(DEFAULT_DATABASE_PATH)))
+    return AgentStudioService(
+        registry=registry,
+        repository=SQLiteAgentDraftRepository(database_path),
+        interaction_repository=SQLiteAgentInteractionRepository(database_path),
+        runtime=RuntimeExecutionService(
+            tool_gateway=ToolGatewayService(registry=tool_registry),
+        ),
+        model_config=model_config,
+    )
+
+
+def build_default_model_config() -> ModelConfigService:
+    database_path = Path(os.getenv("AGENTIC_PLATFORM_DB_PATH", str(DEFAULT_DATABASE_PATH)))
+    return ModelConfigService(database_path)
+
+
+def build_default_prompt_service() -> PromptManagementService:
+    database_path = Path(os.getenv("AGENTIC_PLATFORM_DB_PATH", str(DEFAULT_DATABASE_PATH)))
+    return PromptManagementService(repository=SQLitePromptRepository(database_path))
+
+
+def build_default_tool_registry() -> ToolRegistryService:
+    database_path = Path(os.getenv("AGENTIC_PLATFORM_DB_PATH", str(DEFAULT_DATABASE_PATH)))
+    return ToolRegistryService(repository=SQLiteToolRepository(database_path))
+
+
+def build_default_studio_assets() -> StudioAssetService:
+    database_path = Path(os.getenv("AGENTIC_PLATFORM_DB_PATH", str(DEFAULT_DATABASE_PATH)))
+    return StudioAssetService(repository=SQLiteStudioAssetRepository(database_path))
+
+
 def create_app(
     registry: AgentRegistryService | None = None,
     studio: AgentStudioService | None = None,
+    prompt_service: PromptManagementService | None = None,
+    tool_registry: ToolRegistryService | None = None,
+    studio_assets: StudioAssetService | None = None,
+    model_config: ModelConfigService | None = None,
 ) -> FastAPI:
     app = FastAPI(title="Agentic Platform Control Plane API", version="0.1.0")
     app.state.registry = registry or build_default_registry()
-    app.state.studio = studio or AgentStudioService(registry=app.state.registry)
+    app.state.prompt_service = prompt_service or build_default_prompt_service()
+    app.state.tool_registry = tool_registry or build_default_tool_registry()
+    app.state.model_config = model_config or build_default_model_config()
+    app.state.studio = studio or build_default_studio(
+        app.state.registry,
+        app.state.tool_registry,
+        app.state.model_config,
+    )
+    app.state.studio_assets = studio_assets or build_default_studio_assets()
     _configure_optional_api_key_auth(app)
 
     @app.get("/health")
@@ -230,6 +314,71 @@ body{margin:0;background:#f7f8fa;color:#20242c;font-family:Inter,Segoe UI,Arial,
         )
 
     @app.post(
+        "/studio/agent-drafts/{draft_id}/test-runs",
+        response_model=AgentTestRunResponse,
+        status_code=status.HTTP_201_CREATED,
+    )
+    def run_agent_draft_tests(
+        request: Request,
+        draft_id: UUID,
+        test_request: RunAgentDraftTestsRequest,
+        tenant_id: TenantIdHeader,
+    ) -> AgentTestRunResponse:
+        studio_service = _studio_from_request(request)
+        return _map_studio_errors(
+            lambda: AgentTestRunResponse(
+                result=studio_service.run_test_harness(
+                    tenant_id=tenant_id,
+                    draft_id=draft_id,
+                    test_cases=[test_case.model_dump() for test_case in test_request.test_cases],
+                )
+            )
+        )
+
+    @app.post(
+        "/studio/agent-drafts/{draft_id}/interactions",
+        response_model=AgentInteractionResponse,
+        status_code=status.HTTP_201_CREATED,
+    )
+    async def invoke_agent_draft(
+        request: Request,
+        draft_id: UUID,
+        interaction_request: InvokeAgentDraftRequest,
+        tenant_id: TenantIdHeader,
+    ) -> AgentInteractionResponse:
+        studio_service = _studio_from_request(request)
+        try:
+            return AgentInteractionResponse(
+                interaction=await studio_service.invoke_draft_agent(
+                    tenant_id=tenant_id,
+                    draft_id=draft_id,
+                    query=interaction_request.query,
+                )
+            )
+        except AgentDraftNotFoundError as exc:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+        except AgentDraftAlreadyPublishedError as exc:
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
+        except RuntimeExecutionFailedError as exc:
+            raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=str(exc)) from exc
+        except ValueError as exc:
+            raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)) from exc
+
+    @app.get(
+        "/studio/agent-drafts/{draft_id}/interactions",
+        response_model=AgentInteractionListResponse,
+    )
+    def list_agent_draft_interactions(
+        request: Request,
+        draft_id: UUID,
+        tenant_id: TenantIdHeader,
+    ) -> AgentInteractionListResponse:
+        studio_service = _studio_from_request(request)
+        return AgentInteractionListResponse(
+            interactions=studio_service.list_interactions(tenant_id=tenant_id, draft_id=draft_id)
+        )
+
+    @app.post(
         "/studio/agent-drafts/{draft_id}/publish",
         response_model=AgentVersionResponse,
         status_code=status.HTTP_201_CREATED,
@@ -248,6 +397,187 @@ body{margin:0;background:#f7f8fa;color:#20242c;font-family:Inter,Segoe UI,Arial,
             )
         )
 
+
+    @app.post(
+        "/studio/prompts",
+        response_model=PromptTemplateVersionResponse,
+        status_code=status.HTTP_201_CREATED,
+    )
+    def create_prompt_template(
+        request: Request,
+        prompt_request: CreatePromptTemplateRequest,
+        tenant_id: TenantIdHeader,
+    ) -> PromptTemplateVersionResponse:
+        prompt_service = _prompt_service_from_request(request)
+        template = prompt_service.create_template(
+            tenant_id=tenant_id,
+            name=prompt_request.name,
+            owner=prompt_request.owner,
+            description=prompt_request.description,
+        )
+        version = prompt_service.create_version(
+            tenant_id=tenant_id,
+            template_id=template.template_id,
+            version=prompt_request.version,
+            template_text=prompt_request.template_text,
+        )
+        return PromptTemplateVersionResponse(template=template, version=version)
+
+    @app.get("/studio/prompts", response_model=PromptTemplateListResponse)
+    def list_prompt_templates(request: Request, tenant_id: TenantIdHeader) -> PromptTemplateListResponse:
+        prompt_service = _prompt_service_from_request(request)
+        prompts = []
+        for template in prompt_service.list_templates(tenant_id):
+            versions = prompt_service.list_versions(tenant_id, template.template_id)
+            prompts.append({"template": template, "versions": versions})
+        return PromptTemplateListResponse(prompts=prompts)
+
+    @app.post(
+        "/studio/model-profiles",
+        response_model=ModelProfileResponse,
+        status_code=status.HTTP_201_CREATED,
+    )
+    def save_model_profile(
+        request: Request,
+        profile_request: SaveModelProfileRequest,
+        tenant_id: TenantIdHeader,
+    ) -> ModelProfileResponse:
+        model_config = _model_config_from_request(request)
+        return ModelProfileResponse(
+            profile=model_config.save_profile(
+                tenant_id=tenant_id,
+                profile_id=profile_request.profile_id,
+                display_name=profile_request.display_name,
+                provider=profile_request.provider,
+                model=profile_request.model,
+                api_key=profile_request.api_key,
+            )
+        )
+
+    @app.get("/studio/model-profiles", response_model=ModelProfileListResponse)
+    def list_model_profiles(request: Request, tenant_id: TenantIdHeader) -> ModelProfileListResponse:
+        model_config = _model_config_from_request(request)
+        return ModelProfileListResponse(profiles=model_config.list_profiles(tenant_id))
+
+    @app.delete("/studio/model-profiles/{profile_id}", status_code=status.HTTP_204_NO_CONTENT)
+    def delete_model_profile(request: Request, profile_id: str, tenant_id: TenantIdHeader) -> None:
+        model_config = _model_config_from_request(request)
+        model_config.delete_profile(tenant_id, profile_id)
+
+    @app.post("/studio/tools", status_code=status.HTTP_201_CREATED)
+    def create_tool(
+        request: Request,
+        tool_request: CreateToolRequest,
+        tenant_id: TenantIdHeader,
+    ):
+        tool_registry = _tool_registry_from_request(request)
+        return {
+            "tool": tool_registry.register_tool(
+                tenant_id=tenant_id,
+                name=tool_request.name,
+                description=tool_request.description,
+                implementation_type=tool_request.implementation_type,
+                endpoint_url=tool_request.endpoint_url,
+                method=tool_request.method,
+                auth_type=tool_request.auth_type,
+                input_schema=tool_request.input_schema,
+                output_schema=tool_request.output_schema,
+                risk_class=tool_request.risk_class,
+                allowed_agents=tool_request.allowed_agents,
+                allowed_actions=tool_request.allowed_actions,
+                timeout_seconds=tool_request.timeout_seconds,
+            )
+        }
+
+    @app.get("/studio/tools", response_model=ToolListResponse)
+    def list_tools(request: Request, tenant_id: TenantIdHeader) -> ToolListResponse:
+        tool_registry = _tool_registry_from_request(request)
+        tenant_tools = [
+            tool
+            for tool in tool_registry.list_tools(tenant_id)
+            if tool.tenant_id == tenant_id
+            and not (tool.tenant_id == "default" and tool.name == "mvp.echo")
+        ]
+        return ToolListResponse(tools=tenant_tools)
+
+    @app.post("/studio/tools/{tool_name}/test", response_model=TestToolResponse)
+    async def test_tool(
+        request: Request,
+        tool_name: str,
+        test_request: TestToolRequest,
+        tenant_id: TenantIdHeader,
+    ) -> TestToolResponse:
+        tool_registry = _tool_registry_from_request(request)
+        tool_gateway = ToolGatewayService(registry=tool_registry)
+        payload = {
+            **test_request.payload,
+            **({"action": test_request.action} if test_request.action else {}),
+        }
+        try:
+            result = await tool_gateway.invoke(
+                tool_name,
+                payload,
+                {
+                    "tenant_id": tenant_id,
+                    "agent_id": test_request.agent_id,
+                    "trace_id": "studio-tool-test",
+                },
+            )
+            return TestToolResponse(result=result)
+        except ToolNotFoundError as exc:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+        except ToolInvocationDeniedError as exc:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(exc)) from exc
+        except ToolInvocationExecutionError as exc:
+            raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=str(exc)) from exc
+
+    @app.post("/studio/rules", status_code=status.HTTP_201_CREATED)
+    def create_rule(
+        request: Request,
+        rule_request: CreateRuleRequest,
+        tenant_id: TenantIdHeader,
+    ):
+        studio_assets = _studio_assets_from_request(request)
+        return {
+            "rule": studio_assets.create_rule(
+                tenant_id=tenant_id,
+                name=rule_request.name,
+                condition=rule_request.condition,
+                decision=rule_request.decision,
+            )
+        }
+
+    @app.get("/studio/rules", response_model=RuleListResponse)
+    def list_rules(request: Request, tenant_id: TenantIdHeader) -> RuleListResponse:
+        studio_assets = _studio_assets_from_request(request)
+        return RuleListResponse(rules=studio_assets.list_rules(tenant_id))
+
+    @app.post("/studio/workflows", status_code=status.HTTP_201_CREATED)
+    def save_workflow(
+        request: Request,
+        workflow_request: SaveWorkflowRequest,
+        tenant_id: TenantIdHeader,
+    ):
+        studio_assets = _studio_assets_from_request(request)
+        return {
+            "workflow": studio_assets.save_workflow(
+                tenant_id=tenant_id,
+                agent_id=workflow_request.agent_id,
+                name=workflow_request.name,
+                nodes=[node.model_dump() for node in workflow_request.nodes],
+                workflow_id=workflow_request.workflow_id,
+            )
+        }
+
+    @app.get("/studio/workflows", response_model=WorkflowListResponse)
+    def list_workflows(
+        request: Request,
+        tenant_id: TenantIdHeader,
+        agent_id: str | None = None,
+    ) -> WorkflowListResponse:
+        studio_assets = _studio_assets_from_request(request)
+        return WorkflowListResponse(workflows=studio_assets.list_workflows(tenant_id, agent_id))
+
     return app
 
 
@@ -258,6 +588,23 @@ def _registry_from_request(request: Request) -> AgentRegistryService:
 def _studio_from_request(request: Request) -> AgentStudioService:
     return request.app.state.studio
 
+
+
+
+def _prompt_service_from_request(request: Request) -> PromptManagementService:
+    return request.app.state.prompt_service
+
+
+def _tool_registry_from_request(request: Request) -> ToolRegistryService:
+    return request.app.state.tool_registry
+
+
+def _studio_assets_from_request(request: Request) -> StudioAssetService:
+    return request.app.state.studio_assets
+
+
+def _model_config_from_request(request: Request) -> ModelConfigService:
+    return request.app.state.model_config
 
 def _map_registry_errors(operation: Callable[[], object]):
     try:

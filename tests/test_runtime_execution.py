@@ -2,12 +2,54 @@ import pytest
 
 from platform_common.domain.models import AgentRunStatus
 from services.finops_service.service import AIFinOpsService
+from services.model_gateway.service import ModelGatewayService, ModelInvocationResult
 from services.policy_engine.service import PolicyEngineService
 from services.runtime_execution.service import (
     RuntimeExecutionFailedError,
     RuntimeExecutionService,
     RuntimePolicyDeniedError,
 )
+from services.tool_gateway.service import ToolGatewayService, ToolRegistryService
+
+
+class ToolCallingModelGateway(ModelGatewayService):
+    def __init__(self) -> None:
+        super().__init__()
+        self.calls = 0
+
+    async def chat(self, model_profile: dict, messages: list[dict]) -> ModelInvocationResult:
+        self.calls += 1
+        if self.calls == 1:
+            return ModelInvocationResult(
+                output_text='[@get_current_weather json {"latitude":26.9124,"longitude":75.7873}]',
+                provider="mock",
+                model="mock-model",
+                prompt_tokens=10,
+                completion_tokens=5,
+            )
+        return ModelInvocationResult(
+            output_text="The weather tool reports a clear response for the requested coordinates.",
+            provider="mock",
+            model="mock-model",
+            prompt_tokens=10,
+            completion_tokens=9,
+        )
+
+
+class CapturingModelGateway(ModelGatewayService):
+    def __init__(self) -> None:
+        super().__init__()
+        self.messages: list[dict] = []
+
+    async def chat(self, model_profile: dict, messages: list[dict]) -> ModelInvocationResult:
+        self.messages = messages
+        return ModelInvocationResult(
+            output_text="Product response based on the configured agent instructions.",
+            provider="mock",
+            model="mock-model",
+            prompt_tokens=10,
+            completion_tokens=8,
+        )
 
 
 @pytest.mark.anyio
@@ -31,7 +73,11 @@ async def test_runtime_execution_completes_run_and_records_outputs() -> None:
     assert run.output["memory"]["retention"] == "90d"
     assert run.output["responsible_ai"]["status"] == "passed"
     assert run.output["aisecops"]["prompt_signal"]["signal"] == "none"
-    assert run.output["model"]["output_text"] == "MVP model gateway response"
+    assert run.output["model"]["output_text"] == (
+        "I ran this through the configured agent runtime. User request: hello. "
+        "A production model connector or approved knowledge source is required before I can provide "
+        "specific product facts, rates, eligibility criteria, fees, or regulatory advice."
+    )
     assert run.output["tool"]["status"] == "succeeded"
     assert run.output["retrievals"][0]["document_id"]
     assert run.output["retrievals"][0]["citation"] == "MVP source section 1"
@@ -59,6 +105,96 @@ async def test_runtime_execution_records_finops_usage() -> None:
 
 
 @pytest.mark.anyio
+async def test_runtime_execution_uses_langgraph_when_framework_is_configured() -> None:
+    service = RuntimeExecutionService()
+
+    run = await service.start_run(
+        tenant_id="tenant-a",
+        user_id="user-1",
+        agent_id="agent.customer-support",
+        agent_version="1.0.0",
+        input_payload={
+            "query": "hello",
+            "framework_runtime": "langgraph",
+            "model_profile": {"provider": "mock", "model": "mock-model"},
+        },
+    )
+
+    assert run.status == AgentRunStatus.COMPLETED
+    assert run.output is not None
+    assert run.output["framework_runtime"] == "langgraph"
+    assert run.output["model"]["output_text"].endswith("regulatory advice.")
+    assert run.output["tool"]["status"] == "skipped"
+    assert run.output["retrievals"][0]["document_id"]
+
+
+@pytest.mark.anyio
+async def test_runtime_execution_invokes_model_requested_tool() -> None:
+    registry = ToolRegistryService()
+    registry.register_tool(
+        tenant_id="tenant-a",
+        name="get_current_weather",
+        implementation_type="echo",
+        allowed_actions=["read"],
+    )
+    service = RuntimeExecutionService(
+        model_gateway=ToolCallingModelGateway(),
+        tool_gateway=ToolGatewayService(registry=registry),
+    )
+
+    run = await service.start_run(
+        tenant_id="tenant-a",
+        user_id="user-1",
+        agent_id="agent.weather",
+        agent_version="1.0.0",
+        input_payload={
+            "query": "what is the weather",
+            "framework_runtime": "langgraph",
+            "model_profile": {"provider": "mock", "model": "mock-model"},
+            "tools": [{"ref": "get_current_weather", "required": False}],
+        },
+    )
+
+    assert run.status == AgentRunStatus.COMPLETED
+    assert run.output is not None
+    assert run.output["tool"]["tool_ref"] == "get_current_weather"
+    assert run.output["tool"]["output"]["echo"]["action"] == "read"
+    assert run.output["model"]["output_text"] == (
+        "The weather tool reports a clear response for the requested coordinates."
+    )
+
+
+@pytest.mark.anyio
+async def test_runtime_tool_guidance_keeps_irrelevant_tools_optional() -> None:
+    model_gateway = CapturingModelGateway()
+    service = RuntimeExecutionService(model_gateway=model_gateway)
+
+    run = await service.start_run(
+        tenant_id="tenant-a",
+        user_id="user-1",
+        agent_id="agent.product-advisor",
+        agent_version="1.0.0",
+        input_payload={
+            "query": "tell me about AU savings account product",
+            "framework_runtime": "langgraph",
+            "model_profile": {"provider": "mock", "model": "mock-model"},
+            "tools": [{"ref": "get_current_weather", "required": False}],
+            "system_prompt": "Use AU website information for product questions.",
+        },
+    )
+
+    tool_guidance = next(
+        message["content"]
+        for message in model_gateway.messages
+        if "Optional tools available" in str(message.get("content"))
+    )
+    assert run.output is not None
+    assert run.output["tool"]["status"] == "skipped"
+    assert "Use a tool only when it is directly relevant" in tool_guidance
+    assert "Do not mention irrelevant tools" in tool_guidance
+
+
+@pytest.mark.anyio
 async def test_runtime_execution_records_memory_governance() -> None:
     service = RuntimeExecutionService()
 
@@ -74,7 +210,11 @@ async def test_runtime_execution_records_memory_governance() -> None:
     assert len(records) == 1
     assert records[0].memory_type == "conversation"
     assert records[0].retention == "90d"
-    assert records[0].content["model_output"] == "MVP model gateway response"
+    assert records[0].content["model_output"] == (
+        "I ran this through the configured agent runtime. User request: remember this interaction. "
+        "A production model connector or approved knowledge source is required before I can provide "
+        "specific product facts, rates, eligibility criteria, fees, or regulatory advice."
+    )
 
 
 @pytest.mark.anyio

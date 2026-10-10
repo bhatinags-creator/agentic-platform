@@ -1,6 +1,6 @@
 # Agentic Platform Development Roadmap and Progress Tracker
 
-Last updated: 2026-10-08
+Last updated: 2026-10-09
 
 ## Current Status
 
@@ -9,7 +9,7 @@ We have completed Steps 01 to 48.
 Current platform stage:
 
 ```text
-Foundation + Control Plane MVP + Runtime Plane MVP + Governance Hooks + Persistent Runtime Stores + Agent Studio Foundations + Evaluation + Responsible AI + AISecOps + Tool Governance + MCP + RAG Platform + Deployment + Human Approval + Observability + SDK + CLI + Local Studio UI + Evaluation Workspace UI + Deployment Console UI + Production Hardening
+Foundation + Control Plane MVP + Runtime Plane MVP + Governance Hooks + Persistent Runtime Stores + Agent Studio Foundations + Evaluation + Responsible AI + AISecOps + Tool Governance + MCP + RAG Platform + Deployment + Human Approval + Observability + SDK + CLI + Local Studio UI + React Agent Studio + Prompt Studio + Testing Studio + Tool Studio Phase 2 + Evaluation Workspace UI + Deployment Console UI + Production Hardening
 ```
 
 The platform can currently:
@@ -36,6 +36,8 @@ The platform can currently:
 - record AISecOps security monitoring signals for prompt attacks, agent behavior, RAG poisoning, model drift, tool abuse, and anomalies
 - run AISecOps checks inside runtime execution
 - register and govern tool invocation
+- configure persisted tools from React Tool Studio
+- test tool invocation through the governed Tool Gateway
 - register MCP servers and list MCP tools/resources
 - register knowledge bases, ingest documents, create chunks, attach citations, and govern retrieval safety
 - create deployment targets and deployment records

@@ -163,3 +163,130 @@ def test_optional_api_key_auth_protects_control_plane_api(monkeypatch) -> None:
 
     assert missing_key_response.status_code == 401
     assert valid_key_response.status_code == 200
+
+
+def test_studio_asset_apis_create_and_list_backend_records() -> None:
+    client = build_client()
+    headers = {"X-Tenant-ID": "tenant-a"}
+    agent_response = client.post(
+        "/agents",
+        headers=headers,
+        json={"name": "Policy Review Agent", "owner": "risk-team"},
+    )
+    agent_id = agent_response.json()["agent"]["agent_id"]
+
+    prompt_response = client.post(
+        "/studio/prompts",
+        headers=headers,
+        json={
+            "name": "policy-review-system",
+            "owner": "risk-team",
+            "version": "0.1.0",
+            "template_text": "Review the policy using approved tools only.",
+        },
+    )
+    tool_response = client.post(
+        "/studio/tools",
+        headers=headers,
+        json={
+            "name": "policy.search",
+            "description": "Search policy documents.",
+            "implementation_type": "rest",
+            "endpoint_url": "https://policy.example.test/search",
+            "method": "POST",
+            "auth_type": "api_key",
+            "input_schema": {"type": "object", "properties": {"query": {"type": "string"}}},
+            "output_schema": {"type": "object", "properties": {"results": {"type": "array"}}},
+            "risk_class": "medium",
+            "allowed_agents": [agent_id],
+            "allowed_actions": ["read", "search"],
+            "timeout_seconds": 30,
+        },
+    )
+    rule_response = client.post(
+        "/studio/rules",
+        headers=headers,
+        json={
+            "name": "restricted-data-review",
+            "condition": "Require approval before restricted data leaves the tenant.",
+            "decision": "human_review",
+        },
+    )
+    workflow_response = client.post(
+        "/studio/workflows",
+        headers=headers,
+        json={
+            "agent_id": agent_id,
+            "name": "Policy Review Workflow",
+            "nodes": [
+                {"node_type": "trigger", "name": "Request received", "position": 0},
+                {
+                    "node_type": "tool",
+                    "name": "Search policy",
+                    "service_ref": "policy.search",
+                    "instruction": "Find matching policy documents.",
+                    "position": 1,
+                },
+            ],
+        },
+    )
+
+    prompts = client.get("/studio/prompts", headers=headers).json()["prompts"]
+    tools = client.get("/studio/tools", headers=headers).json()["tools"]
+    rules = client.get("/studio/rules", headers=headers).json()["rules"]
+    workflows = client.get(
+        f"/studio/workflows?agent_id={agent_id}", headers=headers
+    ).json()["workflows"]
+
+    assert prompt_response.status_code == 201
+    assert tool_response.status_code == 201
+    assert rule_response.status_code == 201
+    assert workflow_response.status_code == 201
+    assert prompts[0]["template"]["name"] == "policy-review-system"
+    assert tools[0]["name"] == "policy.search"
+    assert rules[0]["name"] == "restricted-data-review"
+    assert workflows[0]["agent_id"] == agent_id
+    assert workflows[0]["nodes"][1]["service_ref"] == "policy.search"
+    assert tools[0]["implementation_type"] == "rest"
+    assert tools[0]["endpoint_url"] == "https://policy.example.test/search"
+    assert tools[0]["auth_type"] == "api_key"
+
+
+def test_tool_studio_test_runner_uses_gateway_permissions() -> None:
+    client = build_client()
+    headers = {"X-Tenant-ID": "tenant-a"}
+    agent_response = client.post(
+        "/agents",
+        headers=headers,
+        json={"name": "Tool Runner Agent", "owner": "platform-team"},
+    )
+    agent_id = agent_response.json()["agent"]["agent_id"]
+    client.post(
+        "/studio/tools",
+        headers=headers,
+        json={
+            "name": "customer.lookup",
+            "description": "Lookup customer record.",
+            "implementation_type": "echo",
+            "risk_class": "medium",
+            "allowed_agents": [agent_id],
+            "allowed_actions": ["read"],
+            "timeout_seconds": 15,
+        },
+    )
+
+    allowed_response = client.post(
+        "/studio/tools/customer.lookup/test",
+        headers=headers,
+        json={"agent_id": agent_id, "action": "read", "payload": {"customer_id": "123"}},
+    )
+    denied_response = client.post(
+        "/studio/tools/customer.lookup/test",
+        headers=headers,
+        json={"agent_id": agent_id, "action": "delete", "payload": {"customer_id": "123"}},
+    )
+
+    assert allowed_response.status_code == 200
+    assert allowed_response.json()["result"]["output"]["echo"]["customer_id"] == "123"
+    assert denied_response.status_code == 403
+    assert "action is not allowed" in denied_response.json()["detail"]

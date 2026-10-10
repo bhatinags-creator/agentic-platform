@@ -1,7 +1,12 @@
 from __future__ import annotations
 
+import json
+import re
 from abc import ABC, abstractmethod
+from typing import Any, TypedDict
 from uuid import UUID, uuid4
+
+from langgraph.graph import END, START, StateGraph
 
 from observability.service import (
     MetricsSnapshot,
@@ -20,7 +25,24 @@ from services.model_gateway.service import ModelGatewayService
 from services.policy_engine.service import PolicyEngineService
 from services.rag_platform.service import RAGPlatformService
 from services.responsible_ai.service import ResponsibleAIService
-from services.tool_gateway.service import ToolGatewayService, ToolInvocationDeniedError
+from services.tool_gateway.service import (
+    ToolGatewayService,
+    ToolInvocationDeniedError,
+    ToolNotFoundError,
+)
+
+
+class _LangGraphRuntimeState(TypedDict, total=False):
+    input_payload: dict
+    tenant_id: str
+    agent_id: str
+    trace_id: str
+    run_id: str
+    retrievals: list[dict]
+    tool_result: dict
+    tool_call: dict
+    model_result: Any
+    aisecops_signals: list[AISecOpsSignal]
 
 
 class AgentRunNotFoundError(Exception):
@@ -238,40 +260,64 @@ class RuntimeExecutionService:
                     },
                 )
 
-            rag_span = self.observability_service.start_span(trace_id=trace_id, name="rag_retrieval")
-            retrievals = await self.rag_platform.retrieve(str(input_payload), {"tenant_id": tenant_id})
-            self.observability_service.finish_span(rag_span.span_id)
-            for retrieval in retrievals:
-                safety_findings = retrieval.get("safety_findings") or []
-                if safety_findings:
-                    aisecops_signals.append(
-                        self.aisecops_service.record_rag_poisoning(
-                            tenant_id=tenant_id,
-                            agent_id=agent_id,
-                            knowledge_source=str(retrieval.get("citation", "unknown")),
-                            evidence={"findings": safety_findings},
-                            run_id=str(running_run.run_id),
-                            trace_id=trace_id,
+            if self._uses_langgraph(input_payload):
+                graph_result = await self._execute_langgraph_agent_flow(
+                    tenant_id=tenant_id,
+                    agent_id=agent_id,
+                    run_id=str(running_run.run_id),
+                    trace_id=trace_id,
+                    input_payload=input_payload,
+                )
+                retrievals = graph_result["retrievals"]
+                tool_result = graph_result["tool_result"]
+                model_result = graph_result["model_result"]
+                aisecops_signals.extend(graph_result["aisecops_signals"])
+            else:
+                rag_span = self.observability_service.start_span(trace_id=trace_id, name="rag_retrieval")
+                retrievals = await self.rag_platform.retrieve(str(input_payload), {"tenant_id": tenant_id})
+                self.observability_service.finish_span(rag_span.span_id)
+                for retrieval in retrievals:
+                    safety_findings = retrieval.get("safety_findings") or []
+                    if safety_findings:
+                        aisecops_signals.append(
+                            self.aisecops_service.record_rag_poisoning(
+                                tenant_id=tenant_id,
+                                agent_id=agent_id,
+                                knowledge_source=str(retrieval.get("citation", "unknown")),
+                                evidence={"findings": safety_findings},
+                                run_id=str(running_run.run_id),
+                                trace_id=trace_id,
+                            )
                         )
-                    )
-            tool_span = self.observability_service.start_span(trace_id=trace_id, name="tool_invocation")
-            tool_result = await self.tool_gateway.invoke(
-                "mvp.echo",
-                input_payload,
-                {
-                    "tenant_id": tenant_id,
-                    "trace_id": trace_id,
-                    "run_id": str(running_run.run_id),
-                    "agent_id": agent_id,
-                },
-            )
-            self.observability_service.finish_span(tool_span.span_id)
-            model_span = self.observability_service.start_span(trace_id=trace_id, name="model_invocation")
-            model_result = await self.model_gateway.chat(
-                {"provider": "mock", "model": "mock-model"},
-                [{"role": "user", "content": str(input_payload)}],
-            )
-            self.observability_service.finish_span(model_span.span_id)
+                tool_span = self.observability_service.start_span(trace_id=trace_id, name="tool_invocation")
+                tool_result = await self.tool_gateway.invoke(
+                    "mvp.echo",
+                    input_payload,
+                    {
+                        "tenant_id": tenant_id,
+                        "trace_id": trace_id,
+                        "run_id": str(running_run.run_id),
+                        "agent_id": agent_id,
+                    },
+                )
+                self.observability_service.finish_span(tool_span.span_id)
+                model_span = self.observability_service.start_span(trace_id=trace_id, name="model_invocation")
+                model_profile = input_payload.get("model_profile") or {"provider": "mock", "model": "mock-model"}
+                messages = self._model_messages(input_payload, tenant_id)
+                model_result = await self.model_gateway.chat(model_profile, messages)
+                tool_result = await self._invoke_model_requested_tool(
+                    tenant_id=tenant_id,
+                    agent_id=agent_id,
+                    run_id=str(running_run.run_id),
+                    trace_id=trace_id,
+                    input_payload=input_payload,
+                    model_output=model_result.output_text,
+                    default_tool_result=tool_result,
+                    model_profile=model_profile,
+                )
+                if tool_result.get("model_result") is not None:
+                    model_result = tool_result["model_result"]
+                self.observability_service.finish_span(model_span.span_id)
             cost_event = self.finops_service.record_model_usage(
                 tenant_id=tenant_id,
                 agent_id=agent_id,
@@ -379,6 +425,9 @@ class RuntimeExecutionService:
                             "completion_tokens": model_result.completion_tokens,
                             "estimated_cost": model_result.estimated_cost,
                         },
+                        "framework_runtime": (
+                            "langgraph" if self._uses_langgraph(input_payload) else "native"
+                        ),
                         "tool": tool_result,
                         "retrievals": retrievals,
                     },
@@ -499,6 +548,274 @@ class RuntimeExecutionService:
             agent_id=agent_id,
             run_id=run_id,
         )
+
+    async def _execute_langgraph_agent_flow(
+        self,
+        *,
+        tenant_id: str,
+        agent_id: str,
+        run_id: str,
+        trace_id: str,
+        input_payload: dict,
+    ) -> _LangGraphRuntimeState:
+        graph = StateGraph(_LangGraphRuntimeState)
+
+        async def retrieve_context(state: _LangGraphRuntimeState) -> dict:
+            rag_span = self.observability_service.start_span(trace_id=trace_id, name="rag_retrieval")
+            retrievals = await self.rag_platform.retrieve(str(input_payload), {"tenant_id": tenant_id})
+            self.observability_service.finish_span(rag_span.span_id)
+            aisecops_signals: list[AISecOpsSignal] = []
+            for retrieval in retrievals:
+                safety_findings = retrieval.get("safety_findings") or []
+                if safety_findings:
+                    aisecops_signals.append(
+                        self.aisecops_service.record_rag_poisoning(
+                            tenant_id=tenant_id,
+                            agent_id=agent_id,
+                            knowledge_source=str(retrieval.get("citation", "unknown")),
+                            evidence={"findings": safety_findings},
+                            run_id=run_id,
+                            trace_id=trace_id,
+                        )
+                    )
+            return {"retrievals": retrievals, "aisecops_signals": aisecops_signals}
+
+        async def invoke_tool(state: _LangGraphRuntimeState) -> dict:
+            model_result = state.get("model_result")
+            tool_call = self._parse_model_tool_call(
+                model_result.output_text if model_result else "",
+                input_payload,
+            )
+            if not tool_call:
+                return {
+                    "tool_result": {
+                        "tool_ref": None,
+                        "status": "skipped",
+                        "output": None,
+                        "reason": "model did not request a tool",
+                    }
+                }
+            tool_span = self.observability_service.start_span(trace_id=trace_id, name="tool_invocation")
+            payload = self._tool_payload_with_default_action(tool_call["tool_ref"], tool_call["payload"], tenant_id)
+            tool_result = await self.tool_gateway.invoke(
+                tool_call["tool_ref"],
+                payload,
+                {
+                    "tenant_id": tenant_id,
+                    "trace_id": trace_id,
+                    "run_id": run_id,
+                    "agent_id": agent_id,
+                },
+            )
+            self.observability_service.finish_span(tool_span.span_id)
+            return {"tool_result": tool_result, "tool_call": tool_call}
+
+        async def invoke_initial_model(state: _LangGraphRuntimeState) -> dict:
+            model_span = self.observability_service.start_span(trace_id=trace_id, name="model_invocation")
+            model_profile = input_payload.get("model_profile") or {"provider": "mock", "model": "mock-model"}
+            model_result = await self.model_gateway.chat(
+                model_profile,
+                self._model_messages(input_payload, tenant_id),
+            )
+            self.observability_service.finish_span(model_span.span_id)
+            return {"model_result": model_result}
+
+        async def invoke_final_model(state: _LangGraphRuntimeState) -> dict:
+            existing_model_result = state.get("model_result")
+            tool_result = state.get("tool_result")
+            tool_call = state.get("tool_call")
+            if not existing_model_result or not tool_call or not tool_result or tool_result.get("status") == "skipped":
+                return {}
+            model_span = self.observability_service.start_span(trace_id=trace_id, name="model_final_answer")
+            model_profile = input_payload.get("model_profile") or {"provider": "mock", "model": "mock-model"}
+            messages = self._tool_result_messages(
+                input_payload=input_payload,
+                model_tool_request=existing_model_result.output_text,
+                tool_call=tool_call,
+                tool_result=tool_result,
+            )
+            model_result = await self.model_gateway.chat(model_profile, messages)
+            self.observability_service.finish_span(model_span.span_id)
+            return {"model_result": model_result}
+
+        graph.add_node("retrieve_context", retrieve_context)
+        graph.add_node("invoke_initial_model", invoke_initial_model)
+        graph.add_node("invoke_tool", invoke_tool)
+        graph.add_node("invoke_final_model", invoke_final_model)
+        graph.add_edge(START, "retrieve_context")
+        graph.add_edge("retrieve_context", "invoke_initial_model")
+        graph.add_edge("invoke_initial_model", "invoke_tool")
+        graph.add_edge("invoke_tool", "invoke_final_model")
+        graph.add_edge("invoke_final_model", END)
+
+        compiled_graph = graph.compile()
+        return await compiled_graph.ainvoke(
+            {
+                "input_payload": input_payload,
+                "tenant_id": tenant_id,
+                "agent_id": agent_id,
+                "trace_id": trace_id,
+                "run_id": run_id,
+            }
+        )
+
+    @staticmethod
+    def _uses_langgraph(input_payload: dict) -> bool:
+        framework_runtime = str(input_payload.get("framework_runtime", "")).strip().lower()
+        return framework_runtime == "langgraph"
+
+    def _model_messages(self, input_payload: dict, tenant_id: str = "default") -> list[dict]:
+        messages = []
+        system_prompt = input_payload.get("system_prompt")
+        tool_refs = self._tool_prompt_refs(input_payload, tenant_id)
+        if system_prompt:
+            messages.append({"role": "system", "content": system_prompt})
+        if tool_refs:
+            messages.append({
+                "role": "system",
+                "content": (
+                    "Optional tools available to this agent: "
+                    + ", ".join(tool_refs)
+                    + ". Use a tool only when it is directly relevant to the user's request. "
+                    "If no listed tool is relevant, answer using the agent instructions and available context. "
+                    "Do not mention irrelevant tools or say that only an unrelated tool is available. "
+                    "When a relevant tool is required, respond only as "
+                    "[@tool_name json {\"key\":\"value\"}]. For website tools, provide "
+                    "{\"path\":\"/page-path\"} when you know the official path."
+                ),
+            })
+        messages.append({"role": "user", "content": input_payload.get("query") or str(input_payload)})
+        return messages
+
+    def _tool_prompt_refs(self, input_payload: dict, tenant_id: str) -> list[str]:
+        prompt_refs = []
+        for tool_ref in self._allowed_tool_refs(input_payload):
+            try:
+                tool = self.tool_gateway.registry.get_tool(tenant_id, tool_ref)
+                prompt_refs.append(f"{tool_ref} ({tool.implementation_type})")
+            except ToolNotFoundError:
+                prompt_refs.append(tool_ref)
+        return prompt_refs
+
+    async def _invoke_model_requested_tool(
+        self,
+        *,
+        tenant_id: str,
+        agent_id: str,
+        run_id: str,
+        trace_id: str,
+        input_payload: dict,
+        model_output: str,
+        default_tool_result: dict,
+        model_profile: dict,
+    ) -> dict:
+        tool_call = self._parse_model_tool_call(model_output, input_payload)
+        if not tool_call:
+            return default_tool_result
+        payload = self._tool_payload_with_default_action(
+            tool_call["tool_ref"],
+            tool_call["payload"],
+            tenant_id,
+        )
+        tool_result = await self.tool_gateway.invoke(
+            tool_call["tool_ref"],
+            payload,
+            {
+                "tenant_id": tenant_id,
+                "trace_id": trace_id,
+                "run_id": run_id,
+                "agent_id": agent_id,
+            },
+        )
+        final_model_result = await self.model_gateway.chat(
+            model_profile,
+            self._tool_result_messages(
+                input_payload=input_payload,
+                model_tool_request=model_output,
+                tool_call=tool_call,
+                tool_result=tool_result,
+            ),
+        )
+        return {**tool_result, "model_result": final_model_result}
+
+    def _tool_payload_with_default_action(
+        self,
+        tool_ref: str,
+        payload: dict[str, Any],
+        tenant_id: str,
+    ) -> dict[str, Any]:
+        if payload.get("action"):
+            return payload
+        try:
+            tool = self.tool_gateway.registry.get_tool(tenant_id, tool_ref)
+        except ToolNotFoundError:
+            return payload
+        if tool.allowed_actions:
+            return {"action": tool.allowed_actions[0], **payload}
+        return payload
+
+    @staticmethod
+    def _parse_model_tool_call(model_output: str, input_payload: dict) -> dict[str, Any] | None:
+        allowed_tools = RuntimeExecutionService._allowed_tool_refs(input_payload)
+        if not allowed_tools:
+            return None
+        match = re.search(
+            r"\[@(?P<tool>[A-Za-z0-9_.-]+)\s+json\s+(?P<payload>\{.*\})\s*\]",
+            model_output.strip(),
+            flags=re.DOTALL,
+        )
+        if not match:
+            return None
+        tool_ref = match.group("tool")
+        if tool_ref not in allowed_tools:
+            return None
+        try:
+            payload = json.loads(match.group("payload"))
+        except json.JSONDecodeError:
+            return None
+        if not isinstance(payload, dict):
+            return None
+        return {"tool_ref": tool_ref, "payload": payload}
+
+    @staticmethod
+    def _allowed_tool_refs(input_payload: dict) -> set[str]:
+        return {
+            str(tool.get("ref"))
+            for tool in input_payload.get("tools", [])
+            if isinstance(tool, dict) and tool.get("ref")
+        }
+
+    @staticmethod
+    def _tool_result_messages(
+        *,
+        input_payload: dict,
+        model_tool_request: str,
+        tool_call: dict[str, Any],
+        tool_result: dict[str, Any],
+    ) -> list[dict]:
+        system_prompt = input_payload.get("system_prompt")
+        messages = []
+        if system_prompt:
+            messages.append({"role": "system", "content": system_prompt})
+        messages.extend([
+            {"role": "user", "content": input_payload.get("query") or str(input_payload)},
+            {"role": "assistant", "content": model_tool_request},
+            {
+                "role": "user",
+                "content": (
+                    f"Tool result from {tool_call['tool_ref']}: "
+                    f"{json.dumps(tool_result.get('output'), default=str)}"
+                ),
+            },
+            {
+                "role": "user",
+                "content": (
+                    "Use the tool result above to answer the original user question. "
+                    "Do not repeat the tool-call syntax. Provide a concise natural-language answer."
+                ),
+            },
+        ])
+        return messages
 
     def _record_failed_run(
         self,
